@@ -10,7 +10,7 @@ error_reporting(E_ALL);
 // Database connection details
 $servername = "localhost";
 $username = "root";
-$password = "root";
+$password = "";
 $dbname = "farm_master#"; // Adjust if needed
 
 $conn = new mysqli($servername, $username, $password, $dbname);
