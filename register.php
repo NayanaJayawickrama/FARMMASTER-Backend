@@ -11,7 +11,7 @@ header("Content-Type: application/json");
 // Database credentials
 $servername = "localhost";
 $username = "root";
-$password = "root";
+$password = "";
 $dbname = "farm_master#"; // change to your DB name if needed
 
 // Create connection
