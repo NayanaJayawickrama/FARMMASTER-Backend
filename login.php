@@ -1,6 +1,7 @@
 <?php
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type");
+header("Access-Control-Allow-Methods: POST");
 header("Content-Type: application/json");
 
 ini_set('display_errors', 1);
@@ -56,25 +57,27 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 if ($result->num_rows === 0) {
+    http_response_code(401);
     echo json_encode(["status" => "error", "message" => "Invalid login credentials."]);
     $stmt->close();
     $conn->close();
     exit();
 }
 
-$user = $result->fetch_assoc();
-$stmt->close();
+$user = $result->fetch_assoc(); // ✅ You forgot this line in your original code
 
-// Validate password
 if (!password_verify($password, $user['password'])) {
+    http_response_code(401);
     echo json_encode(["status" => "error", "message" => "Invalid login credentials."]);
+    $stmt->close();
     $conn->close();
     exit();
 }
 
-// Validate role
 if ($user['user_role'] !== $dbRole) {
-    echo json_encode(["status" => "error", "message" => "Account type mismatch."]);
+    http_response_code(401);
+    echo json_encode(["status" => "error", "message" => "Invalid login credentials."]);
+    $stmt->close();
     $conn->close();
     exit();
 }
@@ -90,5 +93,6 @@ echo json_encode([
     "email" => $user['email']
 ]);
 
+$stmt->close();
 $conn->close();
 ?>
