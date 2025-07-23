@@ -9,19 +9,7 @@ error_reporting(E_ALL);
 header("Content-Type: application/json");
 
 // Database credentials
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "farm_master#"; 
-
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-// Check connection
-if ($conn->connect_error) {
-    echo json_encode(["status" => "error", "message" => "Database connection failed."]);
-    exit();
-}
+include "database.php";
 
 // Get POST data
 $data = json_decode(file_get_contents("php://input"), true);
@@ -61,7 +49,7 @@ $email_check->close();
 // Hash the password
 $hashed_password = password_hash($plain_password, PASSWORD_BCRYPT);
 
-// Insert user 
+// Insert user (without user_id, assuming it is auto-increment numeric)
 $stmt = $conn->prepare("INSERT INTO user (first_name, last_name, email, phone, password, user_role) VALUES (?, ?, ?, ?, ?, ?)");
 $stmt->bind_param("ssssss", $first_name, $last_name, $email, $phone, $hashed_password, $account_type);
 
