@@ -1,14 +1,21 @@
 <?php
 header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Methods: POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 header("Content-Type: application/json");
 include 'database.php';
 
 $data = json_decode(file_get_contents("php://input"));
 
-if (!$data) {
-    echo json_encode(["error" => "No data received."]);
+if (
+    !isset($data->first_name) ||
+    !isset($data->last_name) ||
+    !isset($data->email) ||
+    !isset($data->password) ||
+    !isset($data->phone) ||
+    !isset($data->account_type)
+) {
+    echo json_encode(["error" => "Missing fields."]);
     exit;
 }
 
@@ -17,10 +24,11 @@ $last_name = $data->last_name;
 $email = $data->email;
 $password = password_hash($data->password, PASSWORD_DEFAULT);
 $phone = $data->phone;
-$user_role = $data->user_role;
+$account_type = $data->account_type;
+$is_active = 1; // By default
 
-$stmt = $conn->prepare("INSERT INTO user (first_name, last_name, email, password, phone, user_role) VALUES (?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("ssssis", $first_name, $last_name, $email, $password, $phone, $user_role);
+$stmt = $conn->prepare("INSERT INTO user (first_name, last_name, email, password, phone, account_type, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("ssssssi", $first_name, $last_name, $email, $password, $phone, $account_type, $is_active);
 
 if ($stmt->execute()) {
     echo json_encode(["success" => true, "message" => "User added successfully."]);
