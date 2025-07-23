@@ -12,7 +12,7 @@ header("Content-Type: application/json");
 $servername = "localhost";
 $username = "root";
 $password = "";
-$dbname = "farm_master#"; // change to your DB name if needed
+$dbname = "farm_master#"; 
 
 // Create connection
 $conn = new mysqli($servername, $username, $password, $dbname);
@@ -61,7 +61,7 @@ $email_check->close();
 // Hash the password
 $hashed_password = password_hash($plain_password, PASSWORD_BCRYPT);
 
-// Insert user (without user_id, assuming it is auto-increment numeric)
+// Insert user 
 $stmt = $conn->prepare("INSERT INTO user (first_name, last_name, email, phone, password, user_role) VALUES (?, ?, ?, ?, ?, ?)");
 $stmt->bind_param("ssssss", $first_name, $last_name, $email, $phone, $hashed_password, $account_type);
 

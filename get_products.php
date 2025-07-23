@@ -2,7 +2,7 @@
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json");
 
-// DB connection
+
 $servername = "localhost";
 $username = "root";
 $password = "";
@@ -10,7 +10,7 @@ $dbname = "farm_master#";
 
 $conn = new mysqli($servername, $username, $password, $dbname);
 
-// Check connection
+
 if ($conn->connect_error) {
   die(json_encode(["error" => "Database connection failed"]));
 }
