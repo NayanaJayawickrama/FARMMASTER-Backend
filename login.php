@@ -10,7 +10,6 @@ error_reporting(E_ALL);
 // Database connection
 include "database.php";
 
-// Parse POST data
 $data = json_decode(file_get_contents("php://input"), true);
 
 $email = filter_var(trim($data['email'] ?? ''), FILTER_SANITIZE_EMAIL);
@@ -70,7 +69,6 @@ if (!password_verify($password, $user['password'])) {
     exit();
 }
 
-// Respond with success
 echo json_encode([
     "status" => "success",
     "message" => "Login successful.",

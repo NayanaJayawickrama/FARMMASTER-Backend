@@ -8,7 +8,7 @@ error_reporting(E_ALL);
 
 header("Content-Type: application/json");
 
-// Database credentials
+
 include "database.php";
 
 // Get POST data

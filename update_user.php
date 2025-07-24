@@ -20,11 +20,9 @@ $email = $data->email ?? null;
 $phone = $data->phone ?? null;
 $user_role = $data->user_role ?? null;
 
-// New: Accept status (Active/Inactive) and convert to is_active 1/0
 $status = $data->status ?? "Active";
 $is_active = ($status === "Active") ? 1 : 0;
 
-// Validate required fields (optional but recommended)
 if (!$first_name || !$last_name || !$email || !$user_role) {
     echo json_encode(["error" => "Missing required fields."]);
     exit;

@@ -14,7 +14,7 @@ if (
     !isset($data->email) ||
     !isset($data->password) ||
     !isset($data->phone) ||
-    !isset($data->user_role)  // ✅ changed from account_type to user_role
+    !isset($data->user_role)  
 ) {
     echo json_encode(["error" => "Missing fields."]);
     exit;
@@ -25,8 +25,8 @@ $last_name = $data->last_name;
 $email = $data->email;
 $password = password_hash($data->password, PASSWORD_DEFAULT);
 $phone = $data->phone;
-$user_role = $data->user_role; // ✅ changed from account_type
-$is_active = 1; // Default to active
+$user_role = $data->user_role; 
+$is_active = 1; 
 
 $stmt = $conn->prepare("INSERT INTO user (first_name, last_name, email, password, phone, user_role, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)");
 $stmt->bind_param("ssssssi", $first_name, $last_name, $email, $password, $phone, $user_role, $is_active);
