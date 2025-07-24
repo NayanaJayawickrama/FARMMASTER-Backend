@@ -4,7 +4,7 @@ header("Content-Type: application/json");
 header("Access-Control-Allow-Methods: POST");
 header("Access-Control-Allow-Headers: Content-Type");
 
-// DB connection
+
 $servername = "localhost";
 $username = "root";
 $password = "";
@@ -12,12 +12,12 @@ $dbname = "farm_master#";
 
 $conn = new mysqli($servername, $username, $password, $dbname);
 
-// Check connection
+
 if ($conn->connect_error) {
     die(json_encode(["success" => false, "message" => "Database connection failed."]));
 }
 
-// Read JSON input
+
 $data = json_decode(file_get_contents("php://input"), true);
 
 if (!$data) {
@@ -25,7 +25,7 @@ if (!$data) {
     exit;
 }
 
-// Sanitize and validate inputs
+
 $product_id = intval($data["product_id"] ?? 0);
 $crop_name = $conn->real_escape_string(trim($data["crop_name"] ?? ""));
 $description = $conn->real_escape_string(trim($data["description"] ?? ""));
@@ -33,14 +33,14 @@ $price_per_unit = floatval($data["price_per_unit"] ?? 0);
 $quantity = floatval($data["quantity"] ?? 0);
 $status = $conn->real_escape_string(trim($data["status"] ?? ""));
 
-// Validate product_id
+
 if ($product_id <= 0) {
     echo json_encode(["success" => false, "message" => "Invalid product ID."]);
     exit;
 }
 
-// ENUM validation with exact casing
-$validCrops = ['Carrots', 'Leeks', 'Tomatoes', 'Cabbage'];
+
+$validCrops = ['Carrot','Leeks','Tomato','Cabbage'];
 $validStatus = ['Available', 'Sold', 'Unavailable'];
 
 if (!in_array($crop_name, $validCrops)) {
@@ -53,7 +53,7 @@ if (!in_array($status, $validStatus)) {
     exit;
 }
 
-// Prepare update query
+
 $sql = "UPDATE product SET 
             crop_name = ?, 
             description = ?, 
