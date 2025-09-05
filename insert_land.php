@@ -27,16 +27,11 @@ if (!$user_id || !$size || !$location) {
   exit();
 }
 
-$stmt = $conn->prepare("INSERT INTO land (user_id, size, location, payment_status, created_at) VALUES (?, ?, ?, 'pending', NOW())");
+$stmt = $conn->prepare("INSERT INTO land (user_id, size, location) VALUES (?, ?, ?)");
 $stmt->bind_param("iss", $user_id, $size, $location);
 
 if ($stmt->execute()) {
-  $land_id = $conn->insert_id;
-  echo json_encode([
-    "status" => "success", 
-    "message" => "Land data inserted successfully.",
-    "land_id" => $land_id
-  ]);
+  echo json_encode(["status" => "success", "message" => "Land data inserted successfully."]);
 } else {
   echo json_encode(["status" => "error", "message" => "Failed to insert data."]);
 }
