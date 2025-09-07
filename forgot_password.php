@@ -20,7 +20,7 @@ use PHPMailer\PHPMailer\Exception;
 
 $data = json_decode(file_get_contents("php://input"), true);
 $email = filter_var(trim($data['email'] ?? ''), FILTER_VALIDATE_EMAIL);
-$frontendUrl = isset($data['frontendUrl']) ? $data['frontendUrl'] : 'http://localhost:5173'; // fallback
+$frontendUrl = isset($data['frontendUrl']) ? $data['frontendUrl'] : 'http://localhost:5174'; // fallback
 
 if (!$email) {
     echo json_encode(["status" => "error", "message" => "Please enter a valid email."]);
