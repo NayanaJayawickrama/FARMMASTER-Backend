@@ -1,7 +1,6 @@
 <?php
 
-putenv('SMTP_USER=radeeshapraneeth531@gmail.com');
-putenv('SMTP_PASS=nilbgvvrladdtfzk');
+
 require_once __DIR__ . '/vendor/autoload.php';
 
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
@@ -62,14 +61,14 @@ try {
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com'; // Set your SMTP server
     $mail->SMTPAuth   = true;
-    $mail->Username   = getenv('SMTP_USER');
-    $mail->Password   = getenv('SMTP_PASS');   // SMTP password (App Password)
+    $mail->Username   = $_ENV['SMTP_USER'];
+    $mail->Password   = $_ENV['SMTP_PASS'];   // SMTP password (App Password)
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     $mail->Port       = 587;
 
     //Recipients
-    error_log('PHPMailer setFrom: "' . getenv('SMTP_USER') . '"');
-    $mail->setFrom(getenv('SMTP_USER'), 'Farm Master');    
+    error_log('PHPMailer setFrom: "' . $_ENV['SMTP_USER'] . '"');
+    $mail->setFrom($_ENV['SMTP_USER'], 'Farm Master');
     $mail->addAddress($email);
 
     // Content
