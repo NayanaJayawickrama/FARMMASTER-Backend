@@ -3,7 +3,6 @@ require_once 'ProductController.php';
 
 $controller = new ProductController();
 $action = $_GET['action'] ?? '';
-$input = json_decode(file_get_contents('php://input'), true);
 
 header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json');
@@ -16,11 +15,15 @@ switch ($action) {
         echo json_encode($result);
         break;
     case 'addProduct':
-        $result = $controller->addProduct($input);
+        $result = $controller->addProduct($_POST, $_FILES);
         echo json_encode($result);
         break;
     case 'updateProduct':
-        $result = $controller->updateProduct($input);
+        $result = $controller->updateProduct($_POST, $_FILES);
+        echo json_encode($result);
+        break;
+    case 'deleteProduct':
+        $result = $controller->deleteProduct($_POST);
         echo json_encode($result);
         break;
     default:
