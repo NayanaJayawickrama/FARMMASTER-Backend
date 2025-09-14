@@ -1,8 +1,6 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-header("Content-Type: application/json");
+header('Access-Control-Allow-Origin: *');
+header('Content-Type: application/json');
 
 include 'database.php';
 
@@ -22,17 +20,15 @@ if (!$user_id) {
 try {
     // Get land reports for the specific user (landowner)
     $sql = "SELECT 
-                lr.report_id,
-                lr.land_id,
-                lr.report_date,
-                lr.land_description,
-                lr.crop_recomendation,
-                lr.status,
-                l.location,
-                l.size,
-                l.payment_status
+                lr.report_id AS id, 
+                l.location, 
+                CONCAT(u.first_name, ' ', u.last_name) AS name, 
+                lr.status, 
+                lr.land_id, 
+                lr.user_id
             FROM land_report lr
             JOIN land l ON lr.land_id = l.land_id
+            JOIN user u ON lr.user_id = u.user_id
             WHERE lr.user_id = ? 
             ORDER BY lr.report_date DESC";
     
@@ -43,17 +39,10 @@ try {
 
     $reports = [];
     while ($row = $result->fetch_assoc()) {
-        $reports[] = [
-            "report_id" => $row["report_id"],
-            "land_id" => $row["land_id"],
-            "report_date" => $row["report_date"],
-            "land_description" => $row["land_description"],
-            "crop_recommendation" => $row["crop_recomendation"],
-            "status" => $row["status"],
-            "location" => $row["location"],
-            "size" => $row["size"],
-            "payment_status" => $row["payment_status"]
-        ];
+        $row['id'] = "#2024-LR-" . str_pad($row['id'], 3, "0", STR_PAD_LEFT); // mimic frontend ID format
+        $row['supervisor'] = "Unassigned"; // Placeholder, update if supervisor info is available
+        $row['supervisorId'] = "";
+        $reports[] = $row;
     }
 
     echo json_encode($reports);
@@ -62,5 +51,7 @@ try {
     echo json_encode(["error" => "Failed to fetch land reports: " . $e->getMessage()]);
 }
 
+$conn->close();
+?>
 $conn->close();
 ?>

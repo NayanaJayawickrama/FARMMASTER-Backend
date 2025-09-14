@@ -26,6 +26,14 @@ switch ($action) {
         $result = $controller->deleteProduct($_POST);
         echo json_encode($result);
         break;
+    case 'getNewCrops':
+        $result = $controller->getNewCrops();
+        echo json_encode($result);
+        break;
+    case 'getAllCrops':
+        $result = $controller->getAllCrops();
+        echo json_encode($result);
+        break;
     default:
         echo json_encode(['error' => 'Invalid action']);
         break;
