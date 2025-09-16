@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Skip rewrite for existing files and directories (including images)
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Route all other requests to api.php
+RewriteRule ^(.*)$ api.php [QSA,L]
