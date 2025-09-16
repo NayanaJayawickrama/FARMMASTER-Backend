@@ -13,7 +13,9 @@ class PaymentIntentModel extends BaseModel {
         try {
             $data = [
                 'user_id' => $intentData['user_id'],
+                'payment_type' => $intentData['payment_type'] ?? 'land_report',
                 'land_id' => $intentData['land_id'] ?? null,
+                'cart_order_id' => $intentData['cart_order_id'] ?? null,
                 'stripe_payment_intent_id' => $intentData['stripe_payment_intent_id'],
                 'amount' => $intentData['amount'],
                 'status' => $intentData['status'] ?? 'created',
