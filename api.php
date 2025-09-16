@@ -53,11 +53,11 @@ class APIRouter {
         $path = trim($path, '/');
         
         // Remove base path if running from subdirectory
-        if (strpos($path, 'Fm/FARMMASTER-Backend/api.php') === 0) {
-            $path = substr($path, strlen('Fm/FARMMASTER-Backend/api.php'));
+        if (strpos($path, 'FARMMASTER-Backend/api.php') === 0) {
+            $path = substr($path, strlen('FARMMASTER-Backend/api.php'));
             $path = trim($path, '/');
-        } elseif (strpos($path, 'Fm/FARMMASTER-Backend/') === 0) {
-            $path = substr($path, strlen('Fm/FARMMASTER-Backend/'));
+        } elseif (strpos($path, 'FARMMASTER-Backend/') === 0) {
+            $path = substr($path, strlen('FARMMASTER-Backend/'));
         }
         
         // Split path into segments
@@ -132,6 +132,10 @@ class APIRouter {
             $controller->login();
         } elseif (count($segments) > 1 && $segments[1] === 'register' && $method === 'POST') {
             $controller->register();
+        } elseif (count($segments) > 1 && $segments[1] === 'forgot-password' && $method === 'POST') {
+            $controller->forgotPassword();
+        } elseif (count($segments) > 1 && $segments[1] === 'reset-password' && $method === 'POST') {
+            $controller->resetPassword();
         } elseif ($method === 'GET') {
             $controller->getAllUsers();
         } elseif ($method === 'POST') {

@@ -85,7 +85,7 @@ class UserController {
             $email = Validator::email($data['email'] ?? '');
             $phone = Validator::phone($data['phone'] ?? '');
             $password = Validator::password($data['password'] ?? '');
-            $accountType = Validator::inArray($data['account_type'] ?? '', ['Landowner', 'Buyer'], 'Account type');
+            $accountType = Validator::inArray($data['user_role'] ?? '', ['Landowner', 'Buyer'], 'Account type');
 
             // Check for existing email
             if ($this->userModel->emailExists($email)) {
@@ -467,24 +467,49 @@ class UserController {
             }
 
             $email = Validator::email($data['email'] ?? '');
+            $frontendUrl = $data['frontendUrl'] ?? 'http://localhost:5173';
 
             $user = $this->userModel->getUserByEmail($email);
 
             if (!$user) {
-                // Don't reveal whether email exists or not
+                // Don't reveal whether email exists or not for security
                 Response::success("If the email exists, a reset link will be sent");
+                return;
             }
 
-            // Here you would typically:
-            // 1. Generate a secure token
-            // 2. Store it in a password_resets table with expiry
-            // 3. Send an email with the reset link
+            // Generate secure reset token
+            $token = bin2hex(random_bytes(32));
+            $expiry = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+            // Store reset token (you'll need to create this method in UserModel)
+            $this->userModel->storePasswordResetToken($user['user_id'], $token, $expiry);
+
+            // Create reset link
+            $resetLink = $frontendUrl . "/reset-password?token=" . $token . "&email=" . urlencode($email);
+
+            // Send email (using PHPMailer)
+            require_once __DIR__ . '/../vendor/autoload.php';
             
-            // For now, just return success
-            Response::success("If the email exists, a reset link will be sent");
+            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+            $mail->isSMTP();
+            $mail->Host = 'smtp.gmail.com';
+            $mail->SMTPAuth = true;
+            $mail->Username = $_ENV['SMTP_USER'] ?? 'radeeshapraneeth531@gmail.com';
+            $mail->Password = $_ENV['SMTP_PASS'] ?? 'nilbgvvrladdtfzk';
+            $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port = 587;
+
+            $mail->setFrom('noreply@farmmaster.com', 'FarmMaster');
+            $mail->addAddress($email);
+            $mail->Subject = 'Password Reset Request - FarmMaster';
+            $mail->Body = "Hi {$user['first_name']},\n\nYou requested to reset your password. Click the link below to reset it:\n\n{$resetLink}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this, please ignore this email.\n\nBest regards,\nFarmMaster Team";
+
+            $mail->send();
+            
+            Response::success("Password reset email sent successfully");
 
         } catch (Exception $e) {
-            Response::error($e->getMessage());
+            Response::error("Failed to send reset email: " . $e->getMessage());
         }
     }
 
@@ -496,16 +521,28 @@ class UserController {
                 Response::error("Invalid JSON data");
             }
 
-            // In a real implementation, you would:
-            // 1. Validate the reset token
-            // 2. Check if it's not expired
-            // 3. Find the user associated with the token
-            // 4. Update their password
+            $email = Validator::email($data['email'] ?? '');
+            $token = Validator::required($data['token'] ?? '', 'Reset token');
+            $newPassword = Validator::password($data['password'] ?? '');
             
-            $newPassword = Validator::password($data['new_password'] ?? '');
+            // Verify token and get user
+            $user = $this->userModel->getUserByResetToken($email, $token);
             
-            // Placeholder - in real implementation you'd get user ID from token
-            Response::error("Reset password functionality not fully implemented");
+            if (!$user) {
+                Response::error("Invalid or expired reset token", 400);
+            }
+
+            // Update password
+            $result = $this->userModel->updatePassword($user['user_id'], $newPassword);
+            
+            if (!$result) {
+                Response::error("Failed to update password", 500);
+            }
+
+            // Clear reset token
+            $this->userModel->clearPasswordResetToken($user['user_id']);
+
+            Response::success("Password reset successfully");
 
         } catch (Exception $e) {
             Response::error($e->getMessage());
