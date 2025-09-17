@@ -155,7 +155,13 @@ class APIRouter {
     
     private function handleProducts($method, $segments) {
         $controller = new ProductController();
-        
+
+        // Add this block for /api/products/new-crops
+        if ($method === 'GET' && isset($segments[1]) && $segments[1] === 'new-crops') {
+            $controller->getNewCropsForProduct();
+            return;
+        }
+
         switch ($method) {
             case 'GET':
                 if (isset($segments[1])) {

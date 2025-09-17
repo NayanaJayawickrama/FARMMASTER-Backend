@@ -22,30 +22,32 @@ class ProductController {
     public function getProducts() {
         try {
             $filters = [];
-            
             if (isset($_GET['status'])) {
                 $filters['status'] = $_GET['status'];
             }
             if (isset($_GET['crop_name'])) {
                 $filters['crop_name'] = $_GET['crop_name'];
             }
+            if (isset($_GET['is_featured'])) {
+                $filters['is_featured'] = $_GET['is_featured'];
+            }
 
             $products = $this->model->getAllProducts($filters);
-            
-            // Map fields and add computed image_url for each product
-            $baseUrl = $this->getBaseUrl();
+
+            $baseUrl = $this->getBaseHostUrl(); // <-- use new helper
             foreach ($products as &$product) {
-                // Map database fields to frontend-expected field names
                 $product['id'] = $product['product_id'];
                 $product['name'] = $product['crop_name'];
                 $product['price'] = $product['price_per_unit'];
-                
-                // Ensure image_url is fully qualified
-                $product['image_url'] = $product['image_url'] ? $baseUrl . '/' . ltrim($product['image_url'], '/') : '';
+                // Always return full image URL
+                $product['image_url'] = $product['image_url']
+                    ? $baseUrl . '/' . ltrim($product['image_url'], '/')
+                    : '';
+                // status already set by model
             }
-            
+
             Response::success("Products retrieved successfully", $products);
-            
+
         } catch (Exception $e) {
             Response::error($e->getMessage());
         }
@@ -59,12 +61,13 @@ class ProductController {
                 Response::notFound("Product not found");
             }
 
-            // Map fields and add computed image_url
-            $baseUrl = $this->getBaseUrl();
+            $baseUrl = $this->getBaseHostUrl(); // <-- use new helper
             $product['id'] = $product['product_id'];
             $product['name'] = $product['crop_name'];
             $product['price'] = $product['price_per_unit'];
-            $product['image_url'] = $product['image_url'] ? $baseUrl . '/' . ltrim($product['image_url'], '/') : '';
+            $product['image_url'] = $product['image_url']
+                ? $baseUrl . '/' . ltrim($product['image_url'], '/')
+                : '';
             
             Response::success("Product retrieved successfully", $product);
             
@@ -75,44 +78,34 @@ class ProductController {
 
     public function addProduct() {
         try {
-            // Check authentication and authorization
-            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Financial_Manager']);
+            // Only allow Financial_Manager and Operational_Manager
+            SessionManager::requireRole(['Financial_Manager', 'Operational_Manager']);
 
-            $cropName = Validator::required($_POST["crop_name"] ?? "", "Crop name");
-            $description = Validator::required($_POST["description"] ?? "", "Description");
+            $cropId = Validator::numeric($_POST["crop_id"] ?? 0, "Crop ID", 1);
             $pricePerUnit = Validator::numeric($_POST["price_per_unit"] ?? 0, "Price per unit", 0.01);
-            $quantity = Validator::numeric($_POST["quantity"] ?? 0, "Quantity", 0);
-            $status = Validator::required($_POST["status"] ?? "", "Status");
-
-            // Validate crop name and status
-            $cropName = Validator::inArray($cropName, $this->validCrops, "Crop name");
-            $status = Validator::inArray($status, $this->validStatus, "Status");
+            $description = Validator::required($_POST["description"] ?? "", "Description");
+            $isFeatured = isset($_POST["is_featured"]) ? intval($_POST["is_featured"]) : 0;
 
             // Handle image upload
             if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
                 Response::error("Image file is required");
             }
-
             $file = $_FILES['image'];
             if (!in_array($file['type'], $this->allowedTypes)) {
                 Response::error("Invalid image type. Only jpg, jpeg, png allowed");
             }
-
-            $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
             $uniqueName = uniqid('img_', true) . '.' . $ext;
             $targetPath = $this->uploadDir . $uniqueName;
-            
             if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
                 Response::error("Failed to save image file");
             }
-
             $imagePath = $this->uploadDir . $uniqueName;
 
-            $result = $this->model->addProduct($cropName, $description, $pricePerUnit, $quantity, $status, $imagePath);
+            $result = $this->model->addProduct($cropId, $pricePerUnit, $description, $imagePath, $isFeatured);
 
             if ($result['success']) {
-                // Add computed image_url for response
-                $baseUrl = $this->getBaseUrl();
+                $baseUrl = $this->getBaseHostUrl();
                 $result['image_url'] = $baseUrl . '/' . ltrim($imagePath, '/');
                 Response::success($result['message'], $result, 201);
             } else {
@@ -126,26 +119,17 @@ class ProductController {
 
     public function updateProduct($productId) {
         try {
-            // Check authentication and authorization
-            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Financial_Manager']);
+            // Only allow Financial_Manager and Operational_Manager
+            SessionManager::requireRole(['Financial_Manager', 'Operational_Manager']);
 
-            // Use $_POST for form data (works with method override)
-            $cropName = Validator::required($_POST["crop_name"] ?? "", "Crop name");
-            $description = Validator::required($_POST["description"] ?? "", "Description");
             $pricePerUnit = Validator::numeric($_POST["price_per_unit"] ?? 0, "Price per unit", 0.01);
-            $quantity = Validator::numeric($_POST["quantity"] ?? 0, "Quantity", 0);
-            $status = Validator::required($_POST["status"] ?? "", "Status");
+            $description = Validator::required($_POST["description"] ?? "", "Description");
+            $isFeatured = isset($_POST["is_featured"]) ? intval($_POST["is_featured"]) : 0;
 
-            // Validate crop name and status
-            $cropName = Validator::inArray($cropName, $this->validCrops, "Crop name");
-            $status = Validator::inArray($status, $this->validStatus, "Status");
-
-            // Get current product info to preserve image if not changed
             $currentProduct = $this->model->getProductById($productId);
             if (!$currentProduct) {
                 Response::notFound("Product not found");
             }
-
             $imagePath = $currentProduct['image_url'];
 
             // Handle new image upload if provided
@@ -154,34 +138,28 @@ class ProductController {
                 if (!in_array($file['type'], $this->allowedTypes)) {
                     Response::error("Invalid image type. Only jpg, jpeg, png allowed");
                 }
-
-                $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+                $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
                 $uniqueName = uniqid('img_', true) . '.' . $ext;
                 $targetPath = $this->uploadDir . $uniqueName;
-                
                 if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
                     Response::error("Failed to save image file");
                 }
-
                 // Delete old image file
                 if ($imagePath && file_exists($imagePath)) {
                     unlink($imagePath);
                 }
-
                 $imagePath = $this->uploadDir . $uniqueName;
             }
 
-            $result = $this->model->updateProduct($productId, $cropName, $description, $pricePerUnit, $quantity, $status, $imagePath);
+            // Pass isFeatured to model
+            $result = $this->model->updateProduct($productId, $pricePerUnit, $description, $imagePath, $isFeatured);
 
             if ($result['success']) {
-                // Add computed image_url for response
-                $baseUrl = $this->getBaseUrl();
+                $baseUrl = $this->getBaseHostUrl();
                 $result['image_url'] = $imagePath ? $baseUrl . '/' . ltrim($imagePath, '/') : '';
                 Response::success($result['message'], $result);
             } else {
-                // Check if it's a "no changes" case vs actual error
                 if ($result['message'] === 'No changes were made.') {
-                    // Return 200 status but with success=false so frontend can handle appropriately
                     Response::json(['status' => 'info', 'message' => $result['message']], 200);
                 } else {
                     Response::error($result['message']);
@@ -195,8 +173,8 @@ class ProductController {
 
     public function deleteProduct($productId) {
         try {
-            // Check authentication and authorization
-            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Financial_Manager']);
+            // Only allow Financial_Manager and Operational_Manager
+            SessionManager::requireRole(['Financial_Manager', 'Operational_Manager']);
 
             $result = $this->model->deleteProduct($productId);
 
@@ -213,7 +191,8 @@ class ProductController {
 
     public function updateProductQuantity($productId) {
         try {
-            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Financial_Manager']);
+            // Only allow Financial_Manager and Operational_Manager
+            SessionManager::requireRole(['Financial_Manager', 'Operational_Manager']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             
@@ -247,7 +226,7 @@ class ProductController {
             $products = $this->model->searchProducts($searchTerm);
 
             // Add computed image_url for each product
-            $baseUrl = $this->getBaseUrl();
+            $baseUrl = $this->getBaseHostUrl();
             foreach ($products as &$product) {
                 $product['image_url'] = $product['image_url'] ? $baseUrl . '/' . ltrim($product['image_url'], '/') : '';
             }
@@ -282,7 +261,7 @@ class ProductController {
             $products = $this->model->getLowStockProducts($threshold);
 
             // Add computed image_url for each product
-            $baseUrl = $this->getBaseUrl();
+            $baseUrl = $this->getBaseHostUrl();
             foreach ($products as &$product) {
                 $product['image_url'] = $product['image_url'] ? $baseUrl . '/' . ltrim($product['image_url'], '/') : '';
             }
@@ -301,7 +280,7 @@ class ProductController {
             $products = $this->model->getProductsByStatus($status);
 
             // Add computed image_url for each product
-            $baseUrl = $this->getBaseUrl();
+            $baseUrl = $this->getBaseHostUrl();
             foreach ($products as &$product) {
                 $product['image_url'] = $product['image_url'] ? $baseUrl . '/' . ltrim($product['image_url'], '/') : '';
             }
@@ -320,7 +299,7 @@ class ProductController {
             $products = $this->model->getProductsByCrop($cropName);
 
             // Add computed image_url for each product
-            $baseUrl = $this->getBaseUrl();
+            $baseUrl = $this->getBaseHostUrl();
             foreach ($products as &$product) {
                 $product['image_url'] = $product['image_url'] ? $baseUrl . '/' . ltrim($product['image_url'], '/') : '';
             }
@@ -332,11 +311,19 @@ class ProductController {
         }
     }
 
-    private function getBaseUrl() {
-        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
+    public function getNewCropsForProduct() {
+        try {
+            $newCrops = $this->model->getNewCropsForProduct();
+            Response::success("New crops for product", $newCrops);
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    private function getBaseHostUrl() {
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "http" : "http";
         $host = $_SERVER['HTTP_HOST'];
-        $scriptDir = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
-        return $protocol . '://' . $host . $scriptDir;
+        return $protocol . '://' . $host . '/FARMMASTER-Backend';
     }
 }
 

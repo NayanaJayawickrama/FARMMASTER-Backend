@@ -17,48 +17,75 @@ class ProductModel extends BaseModel {
         $conditions = [];
         $params = [];
 
+        // Join crop_inventory for crop_name, quantity, status
+        $sql = "SELECT p.product_id, p.price_per_unit, p.description, p.image_url, p.is_featured, 
+                       c.crop_name, c.quantity, c.status
+                FROM {$this->table} p
+                JOIN crop_inventory c ON p.crop_id = c.crop_id";
+
         if (isset($filters['status']) && !empty($filters['status'])) {
-            $conditions[] = 'status = :status';
+            $conditions[] = 'c.status = :status';
             $params[':status'] = $filters['status'];
         }
-
         if (isset($filters['crop_name']) && !empty($filters['crop_name'])) {
-            $conditions[] = 'crop_name = :crop_name';
+            $conditions[] = 'c.crop_name = :crop_name';
             $params[':crop_name'] = $filters['crop_name'];
         }
+        if (isset($filters['is_featured'])) {
+            $conditions[] = 'p.is_featured = :is_featured';
+            $params[':is_featured'] = $filters['is_featured'];
+        }
 
-        $sql = "SELECT product_id, crop_name, description, price_per_unit, quantity, status, image_url FROM {$this->table}";
-        
         if (!empty($conditions)) {
             $sql .= " WHERE " . implode(' AND ', $conditions);
         }
 
-        $sql .= " ORDER BY product_id DESC";
+        $sql .= " ORDER BY p.product_id DESC";
 
-        return $this->executeQuery($sql, $params);
+        $products = $this->executeQuery($sql, $params);
+
+        // Auto-set status to Sold if quantity is 0
+        foreach ($products as &$product) {
+            if ($product['quantity'] == 0) {
+                $product['status'] = 'Sold';
+            }
+        }
+        return $products;
     }
 
     public function getProductById($productId) {
-        return $this->findById($productId, 'product_id');
+        $sql = "SELECT p.product_id, p.price_per_unit, p.description, p.image_url, p.is_featured, 
+                       c.crop_name, c.quantity, c.status
+                FROM {$this->table} p
+                JOIN crop_inventory c ON p.crop_id = c.crop_id
+                WHERE p.product_id = :product_id";
+        $params = [':product_id' => $productId];
+        $product = $this->executeQuery($sql, $params);
+        if ($product && isset($product[0])) {
+            if ($product[0]['quantity'] == 0) {
+                $product[0]['status'] = 'Sold';
+            }
+            return $product[0];
+        }
+        return null;
     }
 
-    public function addProduct($cropName, $description, $pricePerUnit, $quantity, $status, $imagePath) {
+    public function addProduct($cropId, $pricePerUnit, $description, $imagePath, $isFeatured = 0) {
         try {
             $data = [
-                'crop_name' => $cropName,
-                'description' => $description,
+                'crop_id' => $cropId,
                 'price_per_unit' => $pricePerUnit,
-                'quantity' => $quantity,
-                'status' => $status,
-                'image_url' => $imagePath
+                'description' => $description,
+                'image_url' => $imagePath,
+                'is_featured' => $isFeatured
             ];
 
             $productId = $this->create($data);
-            
+
             if ($productId) {
                 return [
-                    "success" => true, 
-                    "message" => "Product added successfully.", 
+                    "success" => true,
+                    "message" => "Product added successfully.",
                     "product_id" => $productId
                 ];
             } else {
@@ -69,19 +96,20 @@ class ProductModel extends BaseModel {
         }
     }
 
-    public function updateProduct($productId, $cropName, $description, $pricePerUnit, $quantity, $status, $imagePath) {
+    // Only allow updating price, description, image, is_featured
+    public function updateProduct($productId, $pricePerUnit, $description, $imagePath, $isFeatured = null) {
         try {
             $data = [
-                'crop_name' => $cropName,
-                'description' => $description,
                 'price_per_unit' => $pricePerUnit,
-                'quantity' => $quantity,
-                'status' => $status,
+                'description' => $description,
                 'image_url' => $imagePath
             ];
-
+            // Only update is_featured if provided
+            if ($isFeatured !== null) {
+                $data['is_featured'] = $isFeatured;
+            }
             $result = $this->update($productId, $data, 'product_id');
-            
+
             if ($result === false) {
                 return ["success" => false, "message" => "Database error occurred."];
             } elseif ($result > 0) {
@@ -175,6 +203,14 @@ class ProductModel extends BaseModel {
         $params = [':threshold' => $threshold];
         
         return $this->executeQuery($sql, $params);
+    }
+
+    public function getNewCropsForProduct() {
+        $sql = "SELECT c.crop_id, c.crop_name
+                FROM crop_inventory c
+                LEFT JOIN product p ON c.crop_id = p.crop_id
+                WHERE p.crop_id IS NULL";
+        return $this->executeQuery($sql);
     }
 }
 
