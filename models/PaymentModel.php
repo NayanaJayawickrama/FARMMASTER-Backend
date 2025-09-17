@@ -82,7 +82,9 @@ class PaymentModel extends BaseModel {
         try {
             $data = [
                 'user_id' => $paymentData['user_id'],
+                'payment_type' => $paymentData['payment_type'] ?? 'land_report',
                 'land_id' => $paymentData['land_id'] ?? null,
+                'order_id' => $paymentData['order_id'] ?? null,
                 'transaction_id' => $paymentData['transaction_id'],
                 'amount' => $paymentData['amount'],
                 'payment_method' => $paymentData['payment_method'],
@@ -93,6 +95,15 @@ class PaymentModel extends BaseModel {
 
             if (isset($paymentData['payment_notes'])) {
                 $data['payment_notes'] = $paymentData['payment_notes'];
+            }
+            if (isset($paymentData['cart_items'])) {
+                $data['cart_items'] = $paymentData['cart_items'];
+            }
+            if (isset($paymentData['shipping_address'])) {
+                $data['shipping_address'] = $paymentData['shipping_address'];
+            }
+            if (isset($paymentData['total_items'])) {
+                $data['total_items'] = $paymentData['total_items'];
             }
 
             $paymentId = $this->create($data);

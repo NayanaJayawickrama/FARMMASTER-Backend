@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../models/PaymentModel.php';
 require_once __DIR__ . '/../models/PaymentIntentModel.php';
 require_once __DIR__ . '/../models/LandModel.php';
+require_once __DIR__ . '/../models/CartOrderModel.php';
 require_once __DIR__ . '/../utils/Response.php';
 require_once __DIR__ . '/../utils/Validator.php';
 require_once __DIR__ . '/../utils/SessionManager.php';
@@ -113,6 +114,7 @@ class PaymentController {
     private $paymentModel;
     private $intentModel;
     private $landModel;
+    private $orderModel;
     private $stripe;
     private $validPaymentMethods = ['stripe', 'cash', 'bank_transfer'];
     private $validPaymentStatus = ['pending', 'completed', 'failed', 'cancelled', 'refunded'];
@@ -121,6 +123,7 @@ class PaymentController {
         $this->paymentModel = new PaymentModel();
         $this->intentModel = new PaymentIntentModel();
         $this->landModel = new LandModel();
+        $this->orderModel = new CartOrderModel();
         $this->stripe = new StripeService();
     }
 
@@ -212,30 +215,63 @@ class PaymentController {
             }
 
             $userId = SessionManager::getCurrentUserId();
-            $landId = Validator::required($data['land_id'] ?? '', 'Land ID');
+            $paymentType = Validator::required($data['payment_type'] ?? 'land_report', 'Payment type');
             $amount = Validator::numeric($data['amount'] ?? 0, 'Amount', 0.01);
 
-            // Debug logging
-            error_log("Payment Intent Debug - User ID: {$userId}, Land ID: {$landId}, Amount: {$amount}, Currency: " . STRIPE_CURRENCY);
+            $landId = null;
+            $cartOrderId = null;
 
-            // Verify land belongs to user
-            $land = $this->landModel->getLandById($landId);
-            if (!$land) {
-                Response::notFound("Land not found");
+            if ($paymentType === 'land_report') {
+                $landId = Validator::required($data['land_id'] ?? '', 'Land ID');
+                
+                // Verify land belongs to user
+                $land = $this->landModel->getLandById($landId);
+                if (!$land) {
+                    Response::notFound("Land not found");
+                }
+                if ($land['user_id'] != $userId) {
+                    Response::forbidden("Access denied");
+                }
+
+                $metadata = [
+                    'user_id' => $userId,
+                    'land_id' => $landId,
+                    'type' => 'land_assessment'
+                ];
+            } else if ($paymentType === 'cart_purchase') {
+                SessionManager::requireRole(['Buyer']);
+                $cartOrderId = Validator::required($data['cart_order_id'] ?? '', 'Cart Order ID');
+                
+                // Verify cart order belongs to user
+                $order = $this->orderModel->getOrderWithItems($cartOrderId);
+                if (!$order) {
+                    Response::notFound("Order not found");
+                }
+                if ($order['user_id'] != $userId) {
+                    Response::forbidden("Access denied");
+                }
+                if ($order['payment_status'] !== 'pending') {
+                    Response::error("Order payment is not pending");
+                }
+
+                $metadata = [
+                    'user_id' => $userId,
+                    'cart_order_id' => $cartOrderId,
+                    'type' => 'cart_purchase',
+                    'order_number' => $order['order_number']
+                ];
+            } else {
+                Response::error("Invalid payment type. Must be 'land_report' or 'cart_purchase'");
             }
-            if ($land['user_id'] != $userId) {
-                Response::forbidden("Access denied");
-            }
+
+            // Debug logging
+            error_log("Payment Intent Debug - User ID: {$userId}, Payment Type: {$paymentType}, Amount: {$amount}, Currency: " . STRIPE_CURRENCY);
 
             // Create payment intent with Stripe
             $payment_intent = $this->stripe->createPaymentIntent(
                 $amount, 
                 STRIPE_CURRENCY,
-                [
-                    'user_id' => $userId,
-                    'land_id' => $landId,
-                    'type' => 'land_assessment'
-                ]
+                $metadata
             );
 
             error_log("Payment Intent Created - ID: {$payment_intent['id']}, Amount: {$payment_intent['amount']}, Currency: {$payment_intent['currency']}");
@@ -243,7 +279,9 @@ class PaymentController {
             // Store the payment intent in database
             $intentData = [
                 'user_id' => $userId,
+                'payment_type' => $paymentType,
                 'land_id' => $landId,
+                'cart_order_id' => $cartOrderId,
                 'stripe_payment_intent_id' => $payment_intent['id'],
                 'amount' => $amount,
                 'status' => 'created'
@@ -279,12 +317,36 @@ class PaymentController {
 
             $paymentIntentId = Validator::required($data['payment_intent_id'] ?? '', 'Payment Intent ID');
             $userId = SessionManager::getCurrentUserId();
-            $landId = Validator::required($data['land_id'] ?? '', 'Land ID');
 
-            // Verify land belongs to user
-            $land = $this->landModel->getLandById($landId);
-            if (!$land || $land['user_id'] != $userId) {
+            // Get payment intent from our database to determine type
+            $localIntent = $this->intentModel->getPaymentIntentByStripeId($paymentIntentId);
+            if (!$localIntent) {
+                Response::notFound("Payment intent not found");
+            }
+
+            if ($localIntent['user_id'] != $userId) {
                 Response::forbidden("Access denied");
+            }
+
+            $paymentType = $localIntent['payment_type'] ?? 'land_report';
+
+            // Additional validation based on payment type
+            if ($paymentType === 'land_report') {
+                $landId = $localIntent['land_id'];
+                $land = $this->landModel->getLandById($landId);
+                if (!$land || $land['user_id'] != $userId) {
+                    Response::forbidden("Access denied to land");
+                }
+            } else if ($paymentType === 'cart_purchase') {
+                SessionManager::requireRole(['Buyer']);
+                $cartOrderId = $localIntent['cart_order_id'];
+                $order = $this->orderModel->getOrderWithItems($cartOrderId);
+                if (!$order || $order['user_id'] != $userId) {
+                    Response::forbidden("Access denied to order");
+                }
+                if ($order['payment_status'] !== 'pending') {
+                    Response::error("Order payment is not pending");
+                }
             }
 
             // Retrieve payment intent status from Stripe
@@ -316,7 +378,9 @@ class PaymentController {
                     // Record payment
                     $paymentData = [
                         'user_id' => $userId,
-                        'land_id' => $landId,
+                        'payment_type' => $paymentType,
+                        'land_id' => $paymentType === 'land_report' ? $localIntent['land_id'] : null,
+                        'order_id' => $paymentType === 'cart_purchase' ? $order['order_number'] ?? null : null,
                         'transaction_id' => $transactionId,
                         'amount' => $amountReceived,
                         'payment_method' => 'stripe',
@@ -330,11 +394,20 @@ class PaymentController {
                         throw new Exception($paymentResult['message']);
                     }
 
-                    // Update land record
-                    $landResult = $this->landModel->updatePaymentStatus($landId, 'paid', date('Y-m-d H:i:s'));
-                    
-                    if (!$landResult['success']) {
-                        throw new Exception($landResult['message']);
+                    if ($paymentType === 'land_report') {
+                        // Update land record
+                        $landResult = $this->landModel->updatePaymentStatus($localIntent['land_id'], 'paid', date('Y-m-d H:i:s'));
+                        
+                        if (!$landResult['success']) {
+                            throw new Exception($landResult['message']);
+                        }
+                    } else if ($paymentType === 'cart_purchase') {
+                        // Update order payment status
+                        $orderResult = $this->orderModel->updatePaymentStatus($localIntent['cart_order_id'], 'completed');
+                        
+                        if (!$orderResult['success']) {
+                            throw new Exception($orderResult['message']);
+                        }
                     }
 
                     // Update payment intent status
@@ -346,7 +419,8 @@ class PaymentController {
                         "transaction_id" => $transactionId,
                         "amount" => $amountReceived,
                         "payment_intent_id" => $paymentIntentId,
-                        "payment_id" => $paymentResult['payment_id']
+                        "payment_id" => $paymentResult['payment_id'],
+                        "payment_type" => $paymentType
                     ]);
 
                 } catch (Exception $e) {

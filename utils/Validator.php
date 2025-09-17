@@ -3,6 +3,15 @@
 class Validator {
     
     public static function required($value, $field) {
+        // Handle arrays differently than strings
+        if (is_array($value)) {
+            if (empty($value)) {
+                throw new Exception("{$field} is required.");
+            }
+            return $value;
+        }
+        
+        // For strings, trim and check
         if (empty(trim($value))) {
             throw new Exception("{$field} is required.");
         }

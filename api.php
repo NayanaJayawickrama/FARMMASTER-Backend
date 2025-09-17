@@ -36,6 +36,7 @@ require_once 'controllers/AssessmentController.php';
 require_once 'controllers/ProposalController.php';
 require_once 'controllers/HarvestController.php';
 require_once 'controllers/PaymentController.php';
+require_once 'controllers/OrderController.php';
 
 // Simple Router
 class APIRouter {
@@ -53,11 +54,18 @@ class APIRouter {
         $path = trim($path, '/');
         
         // Remove base path if running from subdirectory
-        if (strpos($path, 'FARMMASTER-Backend/api.php') === 0) {
+        if (strpos($path, 'v/FARMMASTER-Backend/api.php') === 0) {
+            $path = substr($path, strlen('v/FARMMASTER-Backend/api.php'));
+            $path = trim($path, '/');
+        } elseif (strpos($path, 'v/FARMMASTER-Backend/') === 0) {
+            $path = substr($path, strlen('v/FARMMASTER-Backend/'));
+            $path = trim($path, '/');
+        } elseif (strpos($path, 'FARMMASTER-Backend/api.php') === 0) {
             $path = substr($path, strlen('FARMMASTER-Backend/api.php'));
             $path = trim($path, '/');
         } elseif (strpos($path, 'FARMMASTER-Backend/') === 0) {
             $path = substr($path, strlen('FARMMASTER-Backend/'));
+            $path = trim($path, '/');
         }
         
         // Split path into segments
@@ -101,6 +109,9 @@ class APIRouter {
                     break;
                 case 'payments':
                     $this->handlePayments($method, $segments);
+                    break;
+                case 'orders':
+                    $this->handleOrders($method, $segments);
                     break;
                 case 'reports':
                     $this->handleReports($method, $segments);
@@ -412,6 +423,44 @@ class APIRouter {
                     break;
                 default:
                     Response::error('Invalid payments endpoint', 404);
+            }
+        }
+    }
+    
+    private function handleOrders($method, $segments) {
+        $controller = new OrderController();
+        
+        if (isset($segments[1])) {
+            if ($segments[1] === 'user' && isset($segments[2])) {
+                // GET /api/orders/user/{user_id}
+                if ($method === 'GET') {
+                    $controller->getUserOrders($segments[2]);
+                } else {
+                    Response::error('Invalid method for user orders', 404);
+                }
+            } else if (is_numeric($segments[1])) {
+                // GET /api/orders/{id} - get specific order
+                // PUT /api/orders/{id}/status - update order status
+                if ($method === 'GET') {
+                    $controller->getOrder($segments[1]);
+                } else if ($method === 'PUT' && isset($segments[2]) && $segments[2] === 'status') {
+                    $controller->updateOrderStatus($segments[1]);
+                } else {
+                    Response::error('Invalid order endpoint', 404);
+                }
+            } else {
+                Response::error('Invalid orders endpoint', 404);
+            }
+        } else {
+            switch ($method) {
+                case 'GET':
+                    $controller->getAllOrders();
+                    break;
+                case 'POST':
+                    $controller->createOrder();
+                    break;
+                default:
+                    Response::error('Invalid orders endpoint', 404);
             }
         }
     }
