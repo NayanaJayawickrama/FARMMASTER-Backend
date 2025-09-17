@@ -70,7 +70,7 @@ class APIRouter {
         
         // Split path into segments
         $segments = explode('/', $path);
-        
+
         try {
             // Handle /api/endpoint URLs properly
             if ($segments[0] === 'api' && isset($segments[1])) {
@@ -82,6 +82,14 @@ class APIRouter {
                 $endpoint = $segments[0] === 'api.php' ? $segments[1] ?? '' : $segments[0];
             }
             
+            // Add this block for /buyer/orders POST endpoint
+            if ($segments[0] === 'buyer' && isset($segments[1]) && $segments[1] === 'orders' && $method === 'POST') {
+                require_once 'controllers/BuyerController.php';
+                $controller = new BuyerController();
+                $controller->getOrders();
+                return;
+            }
+
             switch ($endpoint) {
                 case 'auth':
                     $this->handleAuth($method, $segments);
@@ -115,6 +123,9 @@ class APIRouter {
                     break;
                 case 'reports':
                     $this->handleReports($method, $segments);
+                    break;
+                case 'buyerDashboard':
+                    $this->handleBuyerDashboard($method, $segments);
                     break;
                 default:
                     Response::error('Endpoint not found', 404);
@@ -479,6 +490,24 @@ class APIRouter {
             Response::error('Invalid reports endpoint', 404);
         }
     }
+
+    private function handleBuyerDashboard($method, $segments) {
+    if ($method === 'POST') {
+        $input = json_decode(file_get_contents("php://input"), true);
+        $buyerId = $input['userId'] ?? null;
+
+        if ($buyerId) {
+            require_once 'controllers/BuyerController.php';
+            $controller = new BuyerController();
+            $controller->getDashboardData($buyerId);
+        } else {
+            Response::error('Missing userId', 400);
+        }
+    } else {
+        Response::error('Invalid method for buyerDashboard', 405);
+    }
+}
+
 }
 
 // Route the request
