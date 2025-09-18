@@ -142,6 +142,8 @@ class APIRouter {
             $controller->login();
         } elseif (count($segments) > 1 && $segments[1] === 'register' && $method === 'POST') {
             $controller->register();
+        } elseif (count($segments) > 1 && $segments[1] === 'logout' && $method === 'POST') {
+            $controller->logout();
         } else {
             Response::error('Invalid auth endpoint', 404);
         }
@@ -158,6 +160,9 @@ class APIRouter {
             $controller->forgotPassword();
         } elseif (count($segments) > 1 && $segments[1] === 'reset-password' && $method === 'POST') {
             $controller->resetPassword();
+        } elseif ($method === 'GET' && isset($segments[1]) && is_numeric($segments[1])) {
+            // GET /api/users/{id} - for session verification
+            $controller->getUserById($segments[1]);
         } elseif ($method === 'GET') {
             $controller->getAllUsers();
         } elseif ($method === 'POST') {

@@ -4,6 +4,13 @@ class SessionManager {
     
     private static function ensureSessionStarted() {
         if (session_status() === PHP_SESSION_NONE) {
+            // Configure session to end when browser closes
+            ini_set('session.cookie_lifetime', 0); // Session cookie expires when browser closes
+            ini_set('session.gc_maxlifetime', 3600); // Server-side session expires in 1 hour
+            ini_set('session.cookie_httponly', 1); // Prevent XSS attacks
+            ini_set('session.cookie_secure', 0); // Set to 1 if using HTTPS
+            ini_set('session.use_strict_mode', 1); // Prevent session fixation
+            
             session_start();
         }
     }
