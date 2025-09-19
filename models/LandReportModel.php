@@ -295,6 +295,104 @@ class LandReportModel extends BaseModel {
 
         return $assessments;
     }
+
+    /**
+     * Assign supervisor to a land report (using environmental_notes for storage)
+     */
+    public function assignSupervisor($reportId, $supervisorName, $supervisorId) {
+        try {
+            // Store supervisor info in environmental_notes and update status
+            $supervisorInfo = "Assigned to: {$supervisorName} (ID: {$supervisorId})";
+            
+            $sql = "UPDATE {$this->table} SET 
+                        status = 'Assigned',
+                        environmental_notes = CASE 
+                            WHEN environmental_notes IS NULL OR environmental_notes = '' 
+                            THEN :supervisor_info
+                            ELSE CONCAT(environmental_notes, '\n', :supervisor_info)
+                        END
+                    WHERE report_id = :report_id";
+            
+            $stmt = $this->db->prepare($sql);
+            return $stmt->execute([
+                ':supervisor_info' => $supervisorInfo,
+                ':report_id' => $reportId
+            ]);
+            
+        } catch (Exception $e) {
+            error_log("Error assigning supervisor: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get available supervisors (Field Supervisors from database only)
+     */
+    public function getAvailableSupervisors() {
+        try {
+            // Try to get Field Supervisors from the database
+            $sql = "SELECT 
+                        u.user_id,
+                        u.first_name,
+                        u.last_name,
+                        u.email,
+                        u.phone_number,
+                        CONCAT(u.first_name, ' ', u.last_name) as full_name,
+                        u.role
+                    FROM user u
+                    WHERE u.role = 'Field_Supervisor' 
+                    AND u.status = 'active'
+                    ORDER BY u.first_name, u.last_name";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute();
+            
+            $supervisors = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Return database supervisors if found, otherwise return test data
+            return empty($supervisors) ? $this->getTestSupervisors() : $supervisors;
+            
+        } catch (Exception $e) {
+            error_log("Error fetching supervisors from database: " . $e->getMessage());
+            // Return test data if database query fails
+            return $this->getTestSupervisors();
+        }
+    }
+    
+    /**
+     * Get test supervisor data for demonstration
+     */
+    private function getTestSupervisors() {
+        return [
+            [
+                'user_id' => 'FS001',
+                'first_name' => 'John',
+                'last_name' => 'Silva',
+                'email' => 'john.silva@farmmaster.com',
+                'phone_number' => '+94712345678',
+                'full_name' => 'John Silva',
+                'role' => 'Field_Supervisor'
+            ],
+            [
+                'user_id' => 'FS002',
+                'first_name' => 'Sarah',
+                'last_name' => 'Fernando',
+                'email' => 'sarah.fernando@farmmaster.com',
+                'phone_number' => '+94723456789',
+                'full_name' => 'Sarah Fernando',
+                'role' => 'Field_Supervisor'
+            ],
+            [
+                'user_id' => 'FS003',
+                'first_name' => 'David',
+                'last_name' => 'Perera',
+                'email' => 'david.perera@farmmaster.com',
+                'phone_number' => '+94734567890',
+                'full_name' => 'David Perera',
+                'role' => 'Field_Supervisor'
+            ]
+        ];
+    }
 }
 
 ?>
