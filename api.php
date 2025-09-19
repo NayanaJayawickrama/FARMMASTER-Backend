@@ -130,6 +130,9 @@ class APIRouter {
                 case 'buyerDashboard':
                     $this->handleBuyerDashboard($method, $segments);
                     break;
+                case 'dashboard':
+                    $this->handleDashboard($method, $segments);
+                    break;
                 default:
                     Response::error('Endpoint not found', 404);
             }
@@ -587,6 +590,17 @@ class APIRouter {
     }
 }
 
+    private function handleDashboard($method, $segments) {
+        if ($method === 'GET' && count($segments) > 1 && $segments[1] === 'stats') {
+            $controller = new UserController();
+            $controller->getDashboardStats();
+        } elseif ($method === 'GET' && count($segments) > 1 && $segments[1] === 'activity') {
+            $controller = new UserController();
+            $controller->getRecentActivity();
+        } else {
+            Response::error('Invalid dashboard endpoint', 404);
+        }
+    }
 }
 
 // Route the request
