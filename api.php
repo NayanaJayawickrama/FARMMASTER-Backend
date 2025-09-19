@@ -169,6 +169,9 @@ class APIRouter {
         } elseif (count($segments) > 1 && $segments[1] === 'available-roles' && $method === 'GET') {
             // GET /api/users/available-roles - Get available roles for current user
             $controller->getAvailableRoles();
+        } elseif (count($segments) > 1 && $segments[1] === 'session' && $method === 'GET') {
+            // GET /api/users/session - Check if session is valid
+            $controller->checkSession();
         } elseif ($method === 'GET' && isset($segments[1]) && is_numeric($segments[1])) {
             // GET /api/users/{id} - for session verification
             $controller->getUserById($segments[1]);
