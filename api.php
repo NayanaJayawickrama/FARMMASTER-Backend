@@ -54,11 +54,11 @@ class APIRouter {
         $path = trim($path, '/');
         
         // Remove base path if running from subdirectory
-        if (strpos($path, 'v/FARMMASTER-Backend/api.php') === 0) {
-            $path = substr($path, strlen('v/FARMMASTER-Backend/api.php'));
+        if (strpos($path, 'FARMMASTER-Backend/api.php') === 0) {
+            $path = substr($path, strlen('FARMMASTER-Backend/api.php'));
             $path = trim($path, '/');
-        } elseif (strpos($path, 'v/FARMMASTER-Backend/') === 0) {
-            $path = substr($path, strlen('v/FARMMASTER-Backend/'));
+        } elseif (strpos($path, 'FARMMASTER-Backend/') === 0) {
+            $path = substr($path, strlen('FARMMASTER-Backend/'));
             $path = trim($path, '/');
         } elseif (strpos($path, 'FARMMASTER-Backend/api.php') === 0) {
             $path = substr($path, strlen('FARMMASTER-Backend/api.php'));
