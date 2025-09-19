@@ -478,6 +478,84 @@ class ProposalController {
             Response::error($e->getMessage());
         }
     }
+
+    /**
+     * Get all proposals without authentication (for testing)
+     */
+    public function getAllProposalsPublic() {
+        try {
+            // No authentication required for testing
+            $filters = [];
+            
+            if (isset($_GET['user_id'])) {
+                $filters['user_id'] = $_GET['user_id'];
+            }
+            if (isset($_GET['status'])) {
+                $filters['status'] = $_GET['status'];
+            }
+            if (isset($_GET['crop_type'])) {
+                $filters['crop_type'] = $_GET['crop_type'];
+            }
+
+            $proposals = $this->proposalModel->getAllProposals($filters);
+            
+            Response::success("All proposals retrieved successfully (public)", $proposals);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function getProposalPublic($proposalId) {
+        try {
+            $proposal = $this->proposalModel->getProposalById($proposalId);
+            
+            if (!$proposal) {
+                Response::notFound("Proposal not found");
+            }
+            
+            Response::success("Proposal retrieved successfully (public)", $proposal);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function updateProposalStatusPublic($proposalId) {
+        try {
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data || !isset($data['status'])) {
+                Response::error("Status is required");
+            }
+
+            $allowedStatuses = ['Pending', 'Accepted', 'Rejected'];
+            if (!in_array($data['status'], $allowedStatuses)) {
+                Response::error("Invalid status. Allowed values: " . implode(', ', $allowedStatuses));
+            }
+
+            // Check if proposal exists
+            $proposal = $this->proposalModel->getProposalById($proposalId);
+            if (!$proposal) {
+                Response::notFound("Proposal not found");
+            }
+
+            // Update the status
+            $updated = $this->proposalModel->updateProposalStatus($proposalId, $data['status']);
+            
+            if ($updated) {
+                Response::success("Proposal status updated successfully", [
+                    'proposal_id' => $proposalId,
+                    'new_status' => $data['status']
+                ]);
+            } else {
+                Response::error("Failed to update proposal status");
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
 }
 
 ?>
