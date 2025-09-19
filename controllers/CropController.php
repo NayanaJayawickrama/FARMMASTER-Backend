@@ -63,7 +63,7 @@ class CropController {
     public function addCrop() {
         try {
             // Check authentication and authorization
-            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Supervisor']);
+            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Field Supervisor']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             
@@ -106,7 +106,7 @@ class CropController {
     public function updateCrop($cropId) {
         try {
             // Check authentication and authorization
-            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Supervisor']);
+            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Field Supervisor']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             
@@ -193,7 +193,7 @@ class CropController {
 
     public function updateCropQuantity($cropId) {
         try {
-            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Supervisor']);
+            SessionManager::requireRole(['Landowner', 'Operational_Manager', 'Field Supervisor']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             
@@ -242,7 +242,7 @@ class CropController {
 
     public function getCropStats() {
         try {
-            SessionManager::requireRole(['Operational_Manager', 'Financial_Manager', 'Supervisor']);
+            SessionManager::requireRole(['Operational_Manager', 'Financial_Manager', 'Field Supervisor']);
 
             $stats = $this->cropModel->getCropStats();
 
@@ -255,7 +255,7 @@ class CropController {
 
     public function getLowQuantityCrops() {
         try {
-            SessionManager::requireRole(['Operational_Manager', 'Landowner', 'Supervisor']);
+            SessionManager::requireRole(['Operational_Manager', 'Landowner', 'Field Supervisor']);
 
             $threshold = $_GET['threshold'] ?? 10;
             $threshold = Validator::numeric($threshold, "Threshold", 1);
@@ -325,7 +325,7 @@ class CropController {
     // Batch operations
     public function bulkUpdateStatus() {
         try {
-            SessionManager::requireRole(['Operational_Manager', 'Supervisor']);
+            SessionManager::requireRole(['Operational_Manager', 'Field Supervisor']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             

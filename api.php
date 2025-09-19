@@ -34,6 +34,7 @@ require_once 'controllers/CropController.php';
 require_once 'controllers/LandController.php';
 require_once 'controllers/AssessmentController.php';
 require_once 'controllers/ProposalController.php';
+require_once 'controllers/LandReportController.php';
 require_once 'controllers/HarvestController.php';
 require_once 'controllers/PaymentController.php';
 require_once 'controllers/OrderController.php';
@@ -112,6 +113,9 @@ class APIRouter {
                 case 'proposals':
                     $this->handleProposals($method, $segments);
                     break;
+                case 'land-reports':
+                    $this->handleLandReports($method, $segments);
+                    break;
                 case 'harvest':
                     $this->handleHarvest($method, $segments);
                     break;
@@ -126,6 +130,9 @@ class APIRouter {
                     break;
                 case 'buyerDashboard':
                     $this->handleBuyerDashboard($method, $segments);
+                    break;
+                case 'dashboard':
+                    $this->handleDashboard($method, $segments);
                     break;
                 default:
                     Response::error('Endpoint not found', 404);
@@ -505,6 +512,73 @@ class APIRouter {
         }
     }
 
+    private function handleLandReports($method, $segments) {
+        require_once 'controllers/LandReportController.php';
+        $controller = new LandReportController();
+        
+        switch ($method) {
+            case 'GET':
+                if (isset($segments[1])) {
+                    if ($segments[1] === 'public') {
+                        // Public endpoint for testing without authentication
+                        $controller->getAllReportsPublic();
+                    } else if ($segments[1] === 'supervisors') {
+                        // Get available supervisors: land-reports/supervisors
+                        $controller->getAvailableSupervisors();
+                    } else if ($segments[1] === 'supervisors-public') {
+                        // Public endpoint for supervisors: land-reports/supervisors-public
+                        $controller->getAvailableSupervisorsPublic();
+                    } else if (isset($segments[2]) && $segments[2] === 'public') {
+                        // Public endpoint for single report: land-reports/{id}/public
+                        $controller->getReportPublic($segments[1]);
+                    } else {
+                        $controller->getReport($segments[1]);
+                    }
+                } else {
+                    // Check for user_id parameter for getUserReports
+                    if (isset($_GET['user_id'])) {
+                        $controller->getUserReports();
+                    } else {
+                        $controller->getAllReports();
+                    }
+                }
+                break;
+            case 'POST':
+                $controller->createReport();
+                break;
+            case 'PUT':
+                if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status') {
+                    $controller->updateReportStatus($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status-public') {
+                    // Public endpoint for status updates: land-reports/{id}/status-public
+                    $controller->updateReportStatusPublic($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'assign') {
+                    // Assign supervisor: land-reports/{id}/assign
+                    $controller->assignSupervisor($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'assign-public') {
+                    // Public assign supervisor: land-reports/{id}/assign-public
+                    $controller->assignSupervisorPublic($segments[1]);
+                } else if (isset($segments[1])) {
+                    $controller->updateReport($segments[1]);
+                } else {
+                    Response::error('Report ID required for update', 400);
+                }
+                break;
+            case 'DELETE':
+                if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'public') {
+                    // Public delete endpoint: land-reports/{id}/public
+                    $controller->deleteAssignmentPublic($segments[1]);
+                } else if (isset($segments[1])) {
+                    $controller->deleteAssignment($segments[1]);
+                } else {
+                    Response::error('Report ID required', 400);
+                }
+                break;
+            default:
+                Response::error('Invalid land reports endpoint', 404);
+        }
+    }
+
     private function handleBuyerDashboard($method, $segments) {
     if ($method === 'POST') {
         $input = json_decode(file_get_contents("php://input"), true);
@@ -522,6 +596,17 @@ class APIRouter {
     }
 }
 
+    private function handleDashboard($method, $segments) {
+        if ($method === 'GET' && count($segments) > 1 && $segments[1] === 'stats') {
+            $controller = new UserController();
+            $controller->getDashboardStats();
+        } elseif ($method === 'GET' && count($segments) > 1 && $segments[1] === 'activity') {
+            $controller = new UserController();
+            $controller->getRecentActivity();
+        } else {
+            Response::error('Invalid dashboard endpoint', 404);
+        }
+    }
 }
 
 // Route the request

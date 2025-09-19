@@ -7,10 +7,10 @@ require_once __DIR__ . '/../utils/SessionManager.php';
 
 class UserController {
     private $userModel;
-    private $validRoles = ['Landowner', 'Supervisor', 'Buyer', 'Operational_Manager', 'Financial_Manager'];
+    private $validRoles = ['Landowner', 'Field Supervisor', 'Buyer', 'Operational_Manager', 'Financial_Manager'];
     private $roleMapping = [
         'Landowner' => 'Landowner',
-        'Supervisor' => 'Supervisor', 
+        'Field Supervisor' => 'Field Supervisor', 
         'Buyer' => 'Buyer',
         'Operational_Manager' => 'Operational Manager',
         'Financial_Manager' => 'Financial Manager'
@@ -546,6 +546,34 @@ class UserController {
 
         } catch (Exception $e) {
             Response::error($e->getMessage());
+        }
+    }
+
+    public function getDashboardStats() {
+        try {
+            // Get various statistics for operational manager dashboard
+            $stats = $this->userModel->getDashboardStatistics();
+            
+            if ($stats === false) {
+                Response::error("Failed to fetch dashboard statistics", 500);
+            }
+
+            Response::success("Dashboard statistics retrieved successfully", $stats);
+
+        } catch (Exception $e) {
+            error_log("Error in getDashboardStats: " . $e->getMessage());
+            Response::error("Failed to fetch dashboard statistics: " . $e->getMessage());
+        }
+    }
+
+    public function getRecentActivity() {
+        try {
+            $activities = $this->userModel->getRecentActivity(5);
+            Response::success("Recent activity retrieved successfully", $activities);
+
+        } catch (Exception $e) {
+            error_log("Error in getRecentActivity: " . $e->getMessage());
+            Response::error("Failed to fetch recent activity: " . $e->getMessage());
         }
     }
 }

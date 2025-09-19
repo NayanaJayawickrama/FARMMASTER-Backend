@@ -295,6 +295,95 @@ class LandReportModel extends BaseModel {
 
         return $assessments;
     }
+
+    /**
+     * Assign supervisor to a land report (using environmental_notes for storage)
+     */
+    public function assignSupervisor($reportId, $supervisorName, $supervisorId) {
+        try {
+            // Store supervisor info in environmental_notes and update status
+            $supervisorInfo = "Assigned to: {$supervisorName} (ID: {$supervisorId})";
+            
+            $sql = "UPDATE {$this->table} SET 
+                        status = '',
+                        environmental_notes = CASE 
+                            WHEN environmental_notes IS NULL OR environmental_notes = '' 
+                            THEN :supervisor_info1
+                            ELSE CONCAT(environmental_notes, '\\n', :supervisor_info2)
+                        END
+                    WHERE report_id = :report_id";
+            
+            $stmt = $this->db->prepare($sql);
+            $result = $stmt->execute([
+                ':supervisor_info1' => $supervisorInfo,
+                ':supervisor_info2' => $supervisorInfo,
+                ':report_id' => $reportId
+            ]);
+            
+            error_log("Assignment query executed for report $reportId: " . ($result ? 'success' : 'failed'));
+            if (!$result) {
+                error_log("SQL Error: " . print_r($stmt->errorInfo(), true));
+            }
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            error_log("Error assigning supervisor: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get available supervisors (Field Supervisors who are not currently assigned to pending reports)
+     * Supervisors are considered available when:
+     * 1. They have no assignments, OR
+     * 2. All their assignments have status 'Approved', 'Rejected', or 'Completed'
+     */
+    public function getAvailableSupervisors() {
+        try {
+            // Get supervisors who are not currently assigned to any pending land report
+            // Only users with user_role = 'Field Supervisor' and are active
+            // A supervisor is considered "assigned" if they appear in environmental_notes of a report
+            // that has status = '' (pending) or other non-completed statuses
+            $sql = "SELECT 
+                        u.user_id,
+                        u.first_name,
+                        u.last_name,
+                        u.email,
+                        u.phone,
+                        CONCAT(u.first_name, ' ', u.last_name) as full_name,
+                        u.user_role as role,
+                        CASE 
+                            WHEN assigned_reports.supervisor_id IS NOT NULL THEN 'Assigned'
+                            ELSE 'Available'
+                        END as assignment_status
+                    FROM user u
+                    LEFT JOIN (
+                        SELECT DISTINCT 
+                            CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) AS UNSIGNED) as supervisor_id
+                        FROM land_report 
+                        WHERE environmental_notes LIKE '%Assigned to:%' 
+                        AND environmental_notes LIKE '%ID:%'
+                        AND (status = '' OR status IS NULL OR status NOT IN ('Approved', 'Rejected', 'Completed'))
+                        AND SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) REGEXP '^[0-9]+$'
+                    ) assigned_reports ON u.user_id = assigned_reports.supervisor_id
+                    WHERE u.user_role = 'Field Supervisor' 
+                    AND u.is_active = 1
+                    AND assigned_reports.supervisor_id IS NULL
+                    ORDER BY u.first_name, u.last_name";
+
+            $result = $this->executeQuery($sql);
+            
+            error_log("Available supervisors query result: " . print_r($result, true));
+            
+            // Return only unassigned supervisors from database - no fallback data
+            return $result ? $result : [];
+
+        } catch (Exception $e) {
+            error_log("Error in getAvailableSupervisors: " . $e->getMessage());
+            return [];
+        }
+    }
 }
 
 ?>
