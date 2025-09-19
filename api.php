@@ -235,18 +235,16 @@ class APIRouter {
                 break;
             case 'PUT':
                 if (isset($segments[1])) {
-                    $controller->updateCrop($segments[1]);
+                    if (count($segments) > 2 && $segments[2] === 'status') {
+                        $controller->updateCropStatus($segments[1]);
+                    } else {
+                        $controller->updateCrop($segments[1]);
+                    }
                 } else {
                     Response::error('Crop ID required for update', 400);
                 }
                 break;
-            case 'DELETE':
-                if (isset($segments[1])) {
-                    $controller->deleteCrop($segments[1]);
-                } else {
-                    Response::error('Crop ID required', 400);
-                }
-                break;
+            
             default:
                 Response::error('Invalid crops endpoint', 404);
         }
@@ -331,7 +329,15 @@ class APIRouter {
         switch ($method) {
             case 'GET':
                 if (isset($segments[1])) {
-                    $controller->getProposal($segments[1]);
+                    if ($segments[1] === 'public') {
+                        // Public endpoint for testing without authentication
+                        $controller->getAllProposalsPublic();
+                    } else if (isset($segments[2]) && $segments[2] === 'public') {
+                        // Public endpoint for single proposal: proposals/{id}/public
+                        $controller->getProposalPublic($segments[1]);
+                    } else {
+                        $controller->getProposal($segments[1]);
+                    }
                 } else {
                     // Check for user_id parameter for getUserProposals
                     if (isset($_GET['user_id'])) {
@@ -347,6 +353,9 @@ class APIRouter {
             case 'PUT':
                 if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status') {
                     $controller->updateProposalStatus($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status-public') {
+                    // Public endpoint for status updates: proposals/{id}/status-public
+                    $controller->updateProposalStatusPublic($segments[1]);
                 } else if (isset($segments[1])) {
                     $controller->updateProposal($segments[1]);
                 } else {

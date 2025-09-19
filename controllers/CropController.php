@@ -165,23 +165,31 @@ class CropController {
         }
     }
 
-    public function deleteCrop($cropId) {
-        try {
-            // Check authentication and authorization
-            SessionManager::requireRole(['Landowner', 'Operational_Manager']);
-
-            $result = $this->cropModel->deleteCrop($cropId);
-
-            if ($result['success']) {
-                Response::success($result['message']);
-            } else {
-                Response::error($result['message']);
-            }
-
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
+    public function updateCropStatus($cropId) {
+    try {
+        $data = json_decode(file_get_contents("php://input"), true);
+        if (!$data || !isset($data['status'])) {
+            Response::error("Status is required", 400);
+            return;
         }
+        $status = trim($data['status']);
+        $validStatuses = ['Available', 'Unavailable', 'Sold'];
+        if (!in_array($status, $validStatuses)) {
+            Response::error("Invalid status", 400);
+            return;
+        }
+        $result = $this->cropModel->updateCropStatus($cropId, $status);
+        if ($result['success']) {
+            Response::success($result['message']);
+        } else {
+            Response::error($result['message'], 400);
+        }
+    } catch (Exception $e) {
+        Response::error($e->getMessage(), 500);
     }
+}
+
+    
 
     public function updateCropQuantity($cropId) {
         try {

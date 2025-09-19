@@ -119,12 +119,12 @@ class ProposalModel extends BaseModel {
                     p.updated_at,
                     l.location,
                     l.size,
-                    u.firstname,
-                    u.lastname,
-                    u.email
+                    CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
+                    u.email,
+                    CONCAT('#', YEAR(p.created_at), LPAD(p.proposal_id, 3, '0')) as proposal_display_id
                 FROM proposals p
                 JOIN land l ON p.land_id = l.land_id
-                LEFT JOIN users u ON p.user_id = u.user_id
+                JOIN user u ON p.user_id = u.user_id
                 WHERE 1=1";
         
         $params = [];
@@ -176,7 +176,7 @@ class ProposalModel extends BaseModel {
                 return [
                     "proposal_id" => (int)$row["proposal_id"],
                     "user_id" => (int)$row["user_id"],
-                    "user_name" => trim($row["firstname"] . " " . $row["lastname"]),
+                    "landowner_name" => $row["landowner_name"],
                     "user_email" => $row["email"],
                     "land_id" => (int)$row["land_id"],
                     "location" => $row["location"],
@@ -191,7 +191,8 @@ class ProposalModel extends BaseModel {
                     "status" => $row["status"],
                     "proposal_date" => $row["proposal_date"],
                     "created_at" => $row["created_at"],
-                    "updated_at" => $row["updated_at"]
+                    "updated_at" => $row["updated_at"],
+                    "proposal_display_id" => $row["proposal_display_id"]
                 ];
             }, $results);
 
@@ -209,12 +210,12 @@ class ProposalModel extends BaseModel {
                         p.*,
                         l.location,
                         l.size,
-                        u.firstname,
-                        u.lastname,
+                        u.first_name,
+                        u.last_name,
                         u.email
                     FROM proposals p
                     JOIN land l ON p.land_id = l.land_id
-                    LEFT JOIN users u ON p.user_id = u.user_id
+                    JOIN user u ON p.user_id = u.user_id
                     WHERE p.proposal_id = ?";
             
             $stmt = $this->db->prepare($sql);
@@ -228,7 +229,7 @@ class ProposalModel extends BaseModel {
             return [
                 "proposal_id" => (int)$row["proposal_id"],
                 "user_id" => (int)$row["user_id"],
-                "user_name" => trim($row["firstname"] . " " . $row["lastname"]),
+                "user_name" => trim($row["first_name"] . " " . $row["last_name"]),
                 "user_email" => $row["email"],
                 "land_id" => (int)$row["land_id"],
                 "location" => $row["location"],
