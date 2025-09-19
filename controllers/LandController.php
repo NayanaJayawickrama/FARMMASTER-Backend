@@ -19,7 +19,7 @@ class LandController {
 
     public function getAllLands() {
         try {
-            SessionManager::requireRole(['Operational_Manager', 'Financial_Manager', 'Supervisor']);
+            SessionManager::requireRole(['Operational_Manager', 'Financial_Manager', 'Field Supervisor']);
 
             $filters = [];
             
@@ -56,7 +56,7 @@ class LandController {
             $currentUserId = SessionManager::getCurrentUserId();
             $currentRole = SessionManager::getCurrentUserRole();
             
-            if ($land['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Supervisor'])) {
+            if ($land['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Field Supervisor'])) {
                 Response::forbidden("Access denied");
             }
             
@@ -75,7 +75,7 @@ class LandController {
             $currentRole = SessionManager::getCurrentUserRole();
             
             // Use current user ID if not provided or if not manager
-            if (!$userId || (!in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Supervisor']))) {
+            if (!$userId || (!in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Field Supervisor']))) {
                 $userId = $currentUserId;
             }
 
@@ -245,7 +245,7 @@ class LandController {
             $currentRole = SessionManager::getCurrentUserRole();
             
             // Regular users can only search their own lands
-            $userId = in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Supervisor']) ? null : $currentUserId;
+            $userId = in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Field Supervisor']) ? null : $currentUserId;
 
             $lands = $this->landModel->searchLands($searchTerm, $userId);
 
@@ -272,7 +272,7 @@ class LandController {
     // Land Report methods
     public function getAllReports() {
         try {
-            SessionManager::requireRole(['Operational_Manager', 'Financial_Manager', 'Supervisor']);
+            SessionManager::requireRole(['Operational_Manager', 'Financial_Manager', 'Field Supervisor']);
 
             $filters = [];
             
@@ -309,7 +309,7 @@ class LandController {
             $currentUserId = SessionManager::getCurrentUserId();
             $currentRole = SessionManager::getCurrentUserRole();
             
-            if ($report['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Supervisor'])) {
+            if ($report['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Field Supervisor'])) {
                 Response::forbidden("Access denied");
             }
             
@@ -328,7 +328,7 @@ class LandController {
             $currentRole = SessionManager::getCurrentUserRole();
             
             // Use current user ID if not provided or if not manager
-            if (!$userId || (!in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Supervisor']))) {
+            if (!$userId || (!in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Field Supervisor']))) {
                 $userId = $currentUserId;
             }
 
@@ -354,7 +354,7 @@ class LandController {
             $currentUserId = SessionManager::getCurrentUserId();
             $currentRole = SessionManager::getCurrentUserRole();
             
-            if ($land['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Supervisor'])) {
+            if ($land['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Field Supervisor'])) {
                 Response::forbidden("Access denied");
             }
 
@@ -369,7 +369,7 @@ class LandController {
 
     public function addReport() {
         try {
-            SessionManager::requireRole(['Supervisor', 'Operational_Manager']);
+            SessionManager::requireRole(['Field Supervisor', 'Operational_Manager']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             
@@ -436,7 +436,7 @@ class LandController {
 
     public function updateReport($reportId) {
         try {
-            SessionManager::requireRole(['Supervisor', 'Operational_Manager']);
+            SessionManager::requireRole(['Field Supervisor', 'Operational_Manager']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             
@@ -499,7 +499,7 @@ class LandController {
 
     public function updateReportStatus($reportId) {
         try {
-            SessionManager::requireRole(['Supervisor', 'Operational_Manager']);
+            SessionManager::requireRole(['Field Supervisor', 'Operational_Manager']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             
@@ -541,7 +541,7 @@ class LandController {
 
     public function getReportStats() {
         try {
-            SessionManager::requireRole(['Operational_Manager', 'Financial_Manager', 'Supervisor']);
+            SessionManager::requireRole(['Operational_Manager', 'Financial_Manager', 'Field Supervisor']);
 
             $stats = $this->reportModel->getReportStats();
 
@@ -560,7 +560,7 @@ class LandController {
             $currentRole = SessionManager::getCurrentUserRole();
             
             // Use current user ID if not provided or if not manager
-            if (!$userId || (!in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Supervisor']))) {
+            if (!$userId || (!in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Field Supervisor']))) {
                 $userId = $currentUserId;
             }
 
@@ -587,7 +587,7 @@ class LandController {
             $currentUserId = SessionManager::getCurrentUserId();
             $currentRole = SessionManager::getCurrentUserRole();
             
-            if ($report['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Supervisor'])) {
+            if ($report['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Field Supervisor'])) {
                 Response::forbidden("Access denied");
             }
 
@@ -620,7 +620,7 @@ class LandController {
             $currentUserId = SessionManager::getCurrentUserId();
             $currentRole = SessionManager::getCurrentUserRole();
             
-            if ($report['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Supervisor'])) {
+            if ($report['user_id'] != $currentUserId && !in_array($currentRole, ['Operational_Manager', 'Financial_Manager', 'Field Supervisor'])) {
                 echo "<h1>Error: Access denied</h1>";
                 exit;
             }

@@ -330,31 +330,43 @@ class LandReportModel extends BaseModel {
      */
     public function getAvailableSupervisors() {
         try {
-            // Try to get Field Supervisors from the database
+            // Get supervisors who are not currently assigned to any pending land report
+            // Only users with user_role = 'Field Supervisor' and are active
+            // Supervisors become available again after they submit their reports (status = 'Approved' or 'Rejected')
             $sql = "SELECT 
                         u.user_id,
                         u.first_name,
                         u.last_name,
                         u.email,
-                        u.phone_number,
+                        u.phone,
                         CONCAT(u.first_name, ' ', u.last_name) as full_name,
-                        u.role
+                        u.user_role as role
                     FROM user u
-                    WHERE u.role = 'Field_Supervisor' 
-                    AND u.status = 'active'
+                    WHERE u.user_role = 'Field Supervisor' 
+                    AND u.is_active = 1
+                    AND u.user_id NOT IN (
+                        SELECT DISTINCT CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) AS UNSIGNED) as assigned_supervisor_id
+                        FROM land_report 
+                        WHERE environmental_notes LIKE '%Assigned to:%' 
+                        AND environmental_notes LIKE '%ID:%'
+                        AND (status = 'Assigned' OR status = '' OR status IS NULL)
+                        AND status NOT IN ('Approved', 'Rejected')
+                        AND SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) REGEXP '^[0-9]+$'
+                    )
                     ORDER BY u.first_name, u.last_name";
+
+            $result = $this->executeQuery($sql);
             
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute();
-            
-            $supervisors = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Return database supervisors if found, otherwise return test data
-            return empty($supervisors) ? $this->getTestSupervisors() : $supervisors;
-            
+            if ($result && count($result) > 0) {
+                return $result;
+            } else {
+                // Return test data as fallback if no supervisors found in database
+                return $this->getTestSupervisors();
+            }
+
         } catch (Exception $e) {
-            error_log("Error fetching supervisors from database: " . $e->getMessage());
-            // Return test data if database query fails
+            error_log("Error in getAvailableSupervisors: " . $e->getMessage());
+            // Return test data as fallback on error
             return $this->getTestSupervisors();
         }
     }

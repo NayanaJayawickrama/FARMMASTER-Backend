@@ -154,7 +154,7 @@ class HarvestController {
 
     public function createHarvest() {
         try {
-            SessionManager::requireRole(['Field_Supervisor', 'Operational_Manager']);
+            SessionManager::requireRole(['Field Supervisor', 'Operational_Manager']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             
@@ -225,7 +225,7 @@ class HarvestController {
 
     public function updateHarvest($harvestId) {
         try {
-            SessionManager::requireRole(['Field_Supervisor', 'Operational_Manager']);
+            SessionManager::requireRole(['Field Supervisor', 'Operational_Manager']);
 
             $data = json_decode(file_get_contents("php://input"), true);
             

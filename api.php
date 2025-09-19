@@ -34,6 +34,7 @@ require_once 'controllers/CropController.php';
 require_once 'controllers/LandController.php';
 require_once 'controllers/AssessmentController.php';
 require_once 'controllers/ProposalController.php';
+require_once 'controllers/LandReportController.php';
 require_once 'controllers/HarvestController.php';
 require_once 'controllers/PaymentController.php';
 require_once 'controllers/OrderController.php';
