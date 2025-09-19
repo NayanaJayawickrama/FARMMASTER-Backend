@@ -161,10 +161,6 @@ class APIRouter {
             $controller->login();
         } elseif (count($segments) > 1 && $segments[1] === 'register' && $method === 'POST') {
             $controller->register();
-        } elseif (count($segments) > 1 && $segments[1] === 'forgot-password' && $method === 'POST') {
-            $controller->forgotPassword();
-        } elseif (count($segments) > 1 && $segments[1] === 'reset-password' && $method === 'POST') {
-            $controller->resetPassword();
         } elseif ($method === 'GET') {
             $controller->getAllUsers();
         } elseif ($method === 'POST') {

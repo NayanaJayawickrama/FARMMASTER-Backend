@@ -458,97 +458,6 @@ class UserController {
         }
     }
 
-    public function forgotPassword() {
-        try {
-            $data = json_decode(file_get_contents("php://input"), true);
-            
-            if (!$data) {
-                Response::error("Invalid JSON data");
-            }
-
-            $email = Validator::email($data['email'] ?? '');
-            $frontendUrl = $data['frontendUrl'] ?? 'http://localhost:5173';
-
-            $user = $this->userModel->getUserByEmail($email);
-
-            if (!$user) {
-                // Don't reveal whether email exists or not for security
-                Response::success("If the email exists, a reset link will be sent");
-                return;
-            }
-
-            // Generate secure reset token
-            $token = bin2hex(random_bytes(32));
-            $expiry = date('Y-m-d H:i:s', strtotime('+1 hour'));
-
-            // Store reset token (you'll need to create this method in UserModel)
-            $this->userModel->storePasswordResetToken($user['user_id'], $token, $expiry);
-
-            // Create reset link
-            $resetLink = $frontendUrl . "/reset-password?token=" . $token . "&email=" . urlencode($email);
-
-            // Send email (using PHPMailer)
-            require_once __DIR__ . '/../vendor/autoload.php';
-            
-            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
-            $mail->isSMTP();
-            $mail->Host = 'smtp.gmail.com';
-            $mail->SMTPAuth = true;
-            $mail->Username = $_ENV['SMTP_USER'] ?? 'radeeshapraneeth531@gmail.com';
-            $mail->Password = $_ENV['SMTP_PASS'] ?? 'nilbgvvrladdtfzk';
-            $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port = 587;
-
-            $mail->setFrom('noreply@farmmaster.com', 'FarmMaster');
-            $mail->addAddress($email);
-            $mail->Subject = 'Password Reset Request - FarmMaster';
-            $mail->Body = "Hi {$user['first_name']},\n\nYou requested to reset your password. Click the link below to reset it:\n\n{$resetLink}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this, please ignore this email.\n\nBest regards,\nFarmMaster Team";
-
-            $mail->send();
-            
-            Response::success("Password reset email sent successfully");
-
-        } catch (Exception $e) {
-            Response::error("Failed to send reset email: " . $e->getMessage());
-        }
-    }
-
-    public function resetPassword() {
-        try {
-            $data = json_decode(file_get_contents("php://input"), true);
-            
-            if (!$data) {
-                Response::error("Invalid JSON data");
-            }
-
-            $email = Validator::email($data['email'] ?? '');
-            $token = Validator::required($data['token'] ?? '', 'Reset token');
-            $newPassword = Validator::password($data['password'] ?? '');
-            
-            // Verify token and get user
-            $user = $this->userModel->getUserByResetToken($email, $token);
-            
-            if (!$user) {
-                Response::error("Invalid or expired reset token", 400);
-            }
-
-            // Update password
-            $result = $this->userModel->updatePassword($user['user_id'], $newPassword);
-            
-            if (!$result) {
-                Response::error("Failed to update password", 500);
-            }
-
-            // Clear reset token
-            $this->userModel->clearPasswordResetToken($user['user_id']);
-
-            Response::success("Password reset successfully");
-
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
     public function getDashboardStats() {
         try {
             // Get various statistics for operational manager dashboard
@@ -577,5 +486,3 @@ class UserController {
         }
     }
 }
-
-?>

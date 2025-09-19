@@ -166,42 +166,14 @@ class UserModel extends BaseModel {
         return $this->executeQuery($sql, $params);
     }
 
-    public function storePasswordResetToken($userId, $token, $expiry) {
-        // First, clear any existing tokens for this user
-        $this->clearPasswordResetToken($userId);
-        
-        // Insert new token - you might need to create a password_resets table
-        // For now, we'll store it in the user table with additional columns
-        $sql = "UPDATE {$this->table} SET reset_token = :token, reset_token_expiry = :expiry WHERE user_id = :user_id";
-        return $this->executeStatement($sql, [
-            ':token' => $token,
-            ':expiry' => $expiry,
-            ':user_id' => $userId
-        ]);
-    }
-
-    public function getUserByResetToken($email, $token) {
-        $sql = "SELECT * FROM {$this->table} 
-                WHERE email = :email 
-                AND reset_token = :token 
-                AND reset_token_expiry > NOW()";
-        $result = $this->executeQuery($sql, [
-            ':email' => $email,
-            ':token' => $token
-        ]);
-        return $result ? $result[0] : null;
-    }
-
-    public function clearPasswordResetToken($userId) {
-        $sql = "UPDATE {$this->table} SET reset_token = NULL, reset_token_expiry = NULL WHERE user_id = :user_id";
-        return $this->executeStatement($sql, [':user_id' => $userId]);
-    }
-
     public function getDashboardStatistics() {
         try {
             $stats = [];
 
             // Total active users
+            $sql = "SELECT COUNT(*) as total_users FROM {$this->table} WHERE is_active = 1";
+            $result = $this->executeQuery($sql);
+            $stats['total_users'] = $result ? $result[0]['total_users'] : 0;
             $sql = "SELECT COUNT(*) as total_users FROM {$this->table} WHERE is_active = 1";
             $result = $this->executeQuery($sql);
             $stats['total_users'] = $result ? $result[0]['total_users'] : 0;
@@ -366,5 +338,3 @@ class UserModel extends BaseModel {
         }
     }
 }
-
-?>
