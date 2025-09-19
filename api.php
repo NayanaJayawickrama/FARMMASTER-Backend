@@ -235,18 +235,16 @@ class APIRouter {
                 break;
             case 'PUT':
                 if (isset($segments[1])) {
-                    $controller->updateCrop($segments[1]);
+                    if (count($segments) > 2 && $segments[2] === 'status') {
+                        $controller->updateCropStatus($segments[1]);
+                    } else {
+                        $controller->updateCrop($segments[1]);
+                    }
                 } else {
                     Response::error('Crop ID required for update', 400);
                 }
                 break;
-            case 'DELETE':
-                if (isset($segments[1])) {
-                    $controller->deleteCrop($segments[1]);
-                } else {
-                    Response::error('Crop ID required', 400);
-                }
-                break;
+            
             default:
                 Response::error('Invalid crops endpoint', 404);
         }
