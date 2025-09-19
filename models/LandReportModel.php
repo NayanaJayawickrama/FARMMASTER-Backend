@@ -305,19 +305,27 @@ class LandReportModel extends BaseModel {
             $supervisorInfo = "Assigned to: {$supervisorName} (ID: {$supervisorId})";
             
             $sql = "UPDATE {$this->table} SET 
-                        status = 'Assigned',
+                        status = '',
                         environmental_notes = CASE 
                             WHEN environmental_notes IS NULL OR environmental_notes = '' 
-                            THEN :supervisor_info
-                            ELSE CONCAT(environmental_notes, '\n', :supervisor_info)
+                            THEN :supervisor_info1
+                            ELSE CONCAT(environmental_notes, '\\n', :supervisor_info2)
                         END
                     WHERE report_id = :report_id";
             
             $stmt = $this->db->prepare($sql);
-            return $stmt->execute([
-                ':supervisor_info' => $supervisorInfo,
+            $result = $stmt->execute([
+                ':supervisor_info1' => $supervisorInfo,
+                ':supervisor_info2' => $supervisorInfo,
                 ':report_id' => $reportId
             ]);
+            
+            error_log("Assignment query executed for report $reportId: " . ($result ? 'success' : 'failed'));
+            if (!$result) {
+                error_log("SQL Error: " . print_r($stmt->errorInfo(), true));
+            }
+            
+            return $result;
             
         } catch (Exception $e) {
             error_log("Error assigning supervisor: " . $e->getMessage());
@@ -326,13 +334,17 @@ class LandReportModel extends BaseModel {
     }
 
     /**
-     * Get available supervisors (Field Supervisors from database only)
+     * Get available supervisors (Field Supervisors who are not currently assigned to pending reports)
+     * Supervisors are considered available when:
+     * 1. They have no assignments, OR
+     * 2. All their assignments have status 'Approved', 'Rejected', or 'Completed'
      */
     public function getAvailableSupervisors() {
         try {
             // Get supervisors who are not currently assigned to any pending land report
             // Only users with user_role = 'Field Supervisor' and are active
-            // Supervisors become available again after they submit their reports (status = 'Approved' or 'Rejected')
+            // A supervisor is considered "assigned" if they appear in environmental_notes of a report
+            // that has status = '' (pending) or other non-completed statuses
             $sql = "SELECT 
                         u.user_id,
                         u.first_name,
@@ -340,70 +352,37 @@ class LandReportModel extends BaseModel {
                         u.email,
                         u.phone,
                         CONCAT(u.first_name, ' ', u.last_name) as full_name,
-                        u.user_role as role
+                        u.user_role as role,
+                        CASE 
+                            WHEN assigned_reports.supervisor_id IS NOT NULL THEN 'Assigned'
+                            ELSE 'Available'
+                        END as assignment_status
                     FROM user u
-                    WHERE u.user_role = 'Field Supervisor' 
-                    AND u.is_active = 1
-                    AND u.user_id NOT IN (
-                        SELECT DISTINCT CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) AS UNSIGNED) as assigned_supervisor_id
+                    LEFT JOIN (
+                        SELECT DISTINCT 
+                            CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) AS UNSIGNED) as supervisor_id
                         FROM land_report 
                         WHERE environmental_notes LIKE '%Assigned to:%' 
                         AND environmental_notes LIKE '%ID:%'
-                        AND (status = 'Assigned' OR status = '' OR status IS NULL)
-                        AND status NOT IN ('Approved', 'Rejected')
+                        AND (status = '' OR status IS NULL OR status NOT IN ('Approved', 'Rejected', 'Completed'))
                         AND SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) REGEXP '^[0-9]+$'
-                    )
+                    ) assigned_reports ON u.user_id = assigned_reports.supervisor_id
+                    WHERE u.user_role = 'Field Supervisor' 
+                    AND u.is_active = 1
+                    AND assigned_reports.supervisor_id IS NULL
                     ORDER BY u.first_name, u.last_name";
 
             $result = $this->executeQuery($sql);
             
-            if ($result && count($result) > 0) {
-                return $result;
-            } else {
-                // Return test data as fallback if no supervisors found in database
-                return $this->getTestSupervisors();
-            }
+            error_log("Available supervisors query result: " . print_r($result, true));
+            
+            // Return only unassigned supervisors from database - no fallback data
+            return $result ? $result : [];
 
         } catch (Exception $e) {
             error_log("Error in getAvailableSupervisors: " . $e->getMessage());
-            // Return test data as fallback on error
-            return $this->getTestSupervisors();
+            return [];
         }
-    }
-    
-    /**
-     * Get test supervisor data for demonstration
-     */
-    private function getTestSupervisors() {
-        return [
-            [
-                'user_id' => 'FS001',
-                'first_name' => 'John',
-                'last_name' => 'Silva',
-                'email' => 'john.silva@farmmaster.com',
-                'phone_number' => '+94712345678',
-                'full_name' => 'John Silva',
-                'role' => 'Field_Supervisor'
-            ],
-            [
-                'user_id' => 'FS002',
-                'first_name' => 'Sarah',
-                'last_name' => 'Fernando',
-                'email' => 'sarah.fernando@farmmaster.com',
-                'phone_number' => '+94723456789',
-                'full_name' => 'Sarah Fernando',
-                'role' => 'Field_Supervisor'
-            ],
-            [
-                'user_id' => 'FS003',
-                'first_name' => 'David',
-                'last_name' => 'Perera',
-                'email' => 'david.perera@farmmaster.com',
-                'phone_number' => '+94734567890',
-                'full_name' => 'David Perera',
-                'role' => 'Field_Supervisor'
-            ]
-        ];
     }
 }
 

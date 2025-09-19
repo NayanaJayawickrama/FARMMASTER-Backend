@@ -397,8 +397,13 @@ class LandReportController {
         try {
             $input = json_decode(file_get_contents('php://input'), true);
             
-            if (!isset($input['supervisor_name']) || !isset($input['supervisor_id'])) {
+            // Add debugging
+            error_log("Raw input: " . file_get_contents('php://input'));
+            error_log("Parsed input: " . print_r($input, true));
+            
+            if (!$input || !isset($input['supervisor_name']) || !isset($input['supervisor_id'])) {
                 Response::error("Supervisor name and ID are required", 400);
+                return;
             }
 
             $result = $this->landReportModel->assignSupervisor($reportId, $input['supervisor_name'], $input['supervisor_id']);
