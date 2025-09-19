@@ -87,14 +87,28 @@ class UserController {
             $password = Validator::password($data['password'] ?? '');
             $accountType = Validator::inArray($data['user_role'] ?? '', ['Landowner', 'Buyer'], 'Account type');
 
+            // Collect all validation errors
+            $validationErrors = [];
+            
             // Check for existing email
             if ($this->userModel->emailExists($email)) {
-                Response::error("Email already registered");
+                $validationErrors['email'] = "Email already registered";
             }
 
             // Check for existing phone
             if ($this->userModel->phoneExists($phone)) {
-                Response::error("Phone number already registered");
+                $validationErrors['phone'] = "Phone number already registered";
+            }
+
+            // If we have validation errors, return them all
+            if (!empty($validationErrors)) {
+                if (isset($validationErrors['email']) && isset($validationErrors['phone'])) {
+                    Response::error("Email and phone number already registered", 422, $validationErrors);
+                } elseif (isset($validationErrors['email'])) {
+                    Response::error("Email already registered", 422, $validationErrors);
+                } elseif (isset($validationErrors['phone'])) {
+                    Response::error("Phone number already registered", 422, $validationErrors);
+                }
             }
 
             // Create user data
@@ -543,6 +557,148 @@ class UserController {
             $this->userModel->clearPasswordResetToken($user['user_id']);
 
             Response::success("Password reset successfully");
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Switch user role between Buyer and Landowner only
+     */
+    public function switchRole() {
+        try {
+            SessionManager::requireAuth();
+            
+            $currentUserId = SessionManager::getCurrentUserId();
+            $currentRole = SessionManager::getCurrentUserRole();
+            
+            // Only allow Buyer and Landowner to switch roles
+            if (!in_array($currentRole, ['Buyer', 'Landowner'])) {
+                Response::error("Role switching is only available for Buyers and Landowners", 403);
+            }
+
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data) {
+                Response::error("Invalid JSON data");
+            }
+
+            $newRole = Validator::required($data['role'] ?? '', 'New role');
+            
+            // Validate new role - only Buyer or Landowner allowed
+            if (!in_array($newRole, ['Buyer', 'Landowner'])) {
+                Response::error("Can only switch between Buyer and Landowner roles", 400);
+            }
+
+            // Don't allow switching to the same role
+            if ($newRole === $currentRole) {
+                Response::error("You are already in the {$newRole} role", 400);
+            }
+
+            // Check if user has permission to switch to this role
+            $hasRole = $this->userModel->userHasSecondaryRole($currentUserId, $newRole);
+            
+            if (!$hasRole) {
+                // Grant the role if they don't have it yet
+                $this->userModel->grantSecondaryRole($currentUserId, $newRole);
+            }
+
+            // Update current active role
+            $result = $this->userModel->setActiveRole($currentUserId, $newRole);
+            
+            if (!$result) {
+                Response::error("Failed to switch role", 500);
+            }
+
+            // Update session with new role
+            SessionManager::updateUserRole($newRole);
+
+            // Get updated user data
+            $userData = SessionManager::getUserSession();
+            $userData['role'] = $newRole;
+            $userData['switched_from'] = $currentRole;
+
+            Response::success("Role switched successfully", [
+                'user' => $userData,
+                'new_role' => $newRole,
+                'previous_role' => $currentRole
+            ]);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Reset to original role
+     */
+    public function resetRole() {
+        try {
+            SessionManager::requireAuth();
+            
+            $currentUserId = SessionManager::getCurrentUserId();
+            $user = $this->userModel->getUserById($currentUserId);
+            
+            if (!$user) {
+                Response::error("User not found", 404);
+            }
+
+            $originalRole = $user['user_role'];
+            
+            // Reset to original role
+            $result = $this->userModel->setActiveRole($currentUserId, null);
+            
+            if ($result === false) {
+                Response::error("Failed to reset role", 500);
+            }
+
+            // Update session with original role
+            SessionManager::updateUserRole($originalRole);
+
+            // Get updated user data
+            $userData = SessionManager::getUserSession();
+            $userData['role'] = $originalRole;
+
+            Response::success("Role reset to original successfully", [
+                'user' => $userData,
+                'role' => $originalRole
+            ]);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get available roles for current user
+     */
+    public function getAvailableRoles() {
+        try {
+            SessionManager::requireAuth();
+            
+            $currentUserId = SessionManager::getCurrentUserId();
+            $currentRole = SessionManager::getCurrentUserRole();
+            
+            // Only Buyer and Landowner can switch roles
+            if (!in_array($currentRole, ['Buyer', 'Landowner'])) {
+                Response::success("No role switching available", [
+                    'current_role' => $currentRole,
+                    'can_switch' => false,
+                    'available_roles' => []
+                ]);
+                return;
+            }
+
+            // Determine available role to switch to
+            $availableRole = ($currentRole === 'Buyer') ? 'Landowner' : 'Buyer';
+            
+            Response::success("Available roles retrieved", [
+                'current_role' => $currentRole,
+                'can_switch' => true,
+                'available_roles' => [$availableRole],
+                'switch_to' => $availableRole
+            ]);
 
         } catch (Exception $e) {
             Response::error($e->getMessage());

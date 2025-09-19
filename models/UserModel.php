@@ -196,6 +196,91 @@ class UserModel extends BaseModel {
         $sql = "UPDATE {$this->table} SET reset_token = NULL, reset_token_expiry = NULL WHERE user_id = :user_id";
         return $this->executeStatement($sql, [':user_id' => $userId]);
     }
+
+    /**
+     * Check if user has a secondary role
+     */
+    public function userHasSecondaryRole($userId, $role) {
+        $sql = "SELECT COUNT(*) as count FROM user_roles WHERE user_id = :user_id AND role = :role";
+        $result = $this->executeQuery($sql, [
+            ':user_id' => $userId,
+            ':role' => $role
+        ]);
+        return $result && $result[0]['count'] > 0;
+    }
+
+    /**
+     * Grant secondary role to user
+     */
+    public function grantSecondaryRole($userId, $role) {
+        try {
+            $sql = "INSERT INTO user_roles (user_id, role, is_active) VALUES (:user_id, :role, FALSE) 
+                    ON DUPLICATE KEY UPDATE created_date = CURRENT_TIMESTAMP";
+            return $this->executeStatement($sql, [
+                ':user_id' => $userId,
+                ':role' => $role
+            ]);
+        } catch (Exception $e) {
+            throw new Exception("Failed to grant secondary role: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Set active role for user (null means use original role)
+     */
+    public function setActiveRole($userId, $role) {
+        try {
+            // First deactivate all secondary roles for this user
+            $this->executeStatement(
+                "UPDATE user_roles SET is_active = FALSE WHERE user_id = :user_id",
+                [':user_id' => $userId]
+            );
+
+            // Update current active role in user table
+            $sql = "UPDATE {$this->table} SET current_active_role = :role WHERE user_id = :user_id";
+            $result = $this->executeStatement($sql, [
+                ':user_id' => $userId,
+                ':role' => $role
+            ]);
+
+            // If switching to a secondary role, mark it as active
+            if ($role && in_array($role, ['Buyer', 'Landowner'])) {
+                $this->executeStatement(
+                    "UPDATE user_roles SET is_active = TRUE WHERE user_id = :user_id AND role = :role",
+                    [':user_id' => $userId, ':role' => $role]
+                );
+            }
+
+            return $result;
+        } catch (Exception $e) {
+            throw new Exception("Failed to set active role: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get current active role for user (returns active role or original role)
+     */
+    public function getCurrentRole($userId) {
+        $sql = "SELECT user_role, current_active_role FROM {$this->table} WHERE user_id = :user_id";
+        $result = $this->executeQuery($sql, [':user_id' => $userId]);
+        
+        if (!$result) {
+            return null;
+        }
+
+        $user = $result[0];
+        return $user['current_active_role'] ?: $user['user_role'];
+    }
+
+    /**
+     * Get user's role switching history
+     */
+    public function getRoleSwitchHistory($userId) {
+        $sql = "SELECT role, is_active, created_date FROM user_roles 
+                WHERE user_id = :user_id 
+                ORDER BY created_date DESC";
+        return $this->executeQuery($sql, [':user_id' => $userId]);
+    }
 }
 
 ?>

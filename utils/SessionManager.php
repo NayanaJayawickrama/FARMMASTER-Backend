@@ -107,6 +107,15 @@ class SessionManager {
         self::requireAuth();
         return $_SESSION['user_role'];
     }
+
+    public static function updateUserRole($newRole) {
+        self::requireAuth();
+        $_SESSION['user_role'] = $newRole;
+        $_SESSION['last_activity'] = time();
+        
+        // Regenerate session ID for security when role changes
+        session_regenerate_id(true);
+    }
 }
 
 ?>

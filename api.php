@@ -160,6 +160,15 @@ class APIRouter {
             $controller->forgotPassword();
         } elseif (count($segments) > 1 && $segments[1] === 'reset-password' && $method === 'POST') {
             $controller->resetPassword();
+        } elseif (count($segments) > 1 && $segments[1] === 'switch-role' && $method === 'POST') {
+            // POST /api/users/switch-role - Switch between Buyer/Landowner roles
+            $controller->switchRole();
+        } elseif (count($segments) > 1 && $segments[1] === 'reset-role' && $method === 'POST') {
+            // POST /api/users/reset-role - Reset to original role
+            $controller->resetRole();
+        } elseif (count($segments) > 1 && $segments[1] === 'available-roles' && $method === 'GET') {
+            // GET /api/users/available-roles - Get available roles for current user
+            $controller->getAvailableRoles();
         } elseif ($method === 'GET' && isset($segments[1]) && is_numeric($segments[1])) {
             // GET /api/users/{id} - for session verification
             $controller->getUserById($segments[1]);
