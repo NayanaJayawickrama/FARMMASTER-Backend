@@ -1,5 +1,6 @@
 <?php
 
+
 require_once __DIR__ . '/../config/Database.php';
 
 class CropModel extends BaseModel {
@@ -18,7 +19,12 @@ class CropModel extends BaseModel {
             $params[':crop_name'] = "%{$filters['crop_name']}%";
         }
 
-        $sql = "SELECT crop_id, crop_name, crop_duration, quantity FROM {$this->table}";
+        if (isset($filters['status']) && !empty($filters['status'])) {
+            $conditions[] = 'status = :status';
+            $params[':status'] = $filters['status'];
+        }
+
+        $sql = "SELECT crop_id, crop_name, crop_duration, quantity, status FROM {$this->table}";
         
         if (!empty($conditions)) {
             $sql .= " WHERE " . implode(' AND ', $conditions);
@@ -30,7 +36,9 @@ class CropModel extends BaseModel {
     }
 
     public function getCropById($cropId) {
-        return $this->findById($cropId, 'crop_id');
+        $sql = "SELECT * FROM {$this->table} WHERE crop_id = :crop_id";
+        $result = $this->executeQuery($sql, [':crop_id' => $cropId]);
+        return $result ? $result[0] : null;
     }
 
     public function getCropByName($cropName) {
@@ -44,7 +52,8 @@ class CropModel extends BaseModel {
             $data = [
                 'crop_name' => $cropData['crop_name'],
                 'crop_duration' => $cropData['crop_duration'],
-                'quantity' => $cropData['quantity']
+                'quantity' => $cropData['quantity'],
+                'status' => $cropData['status'] ?? 'Available'
             ];
 
             $cropId = $this->create($data);
@@ -98,14 +107,55 @@ class CropModel extends BaseModel {
         }
     }
 
+    public function updateCropStatus($cropId, $status) {
+        try {
+            // Validate status
+            $validStatuses = ['Available', 'Unavailable', 'Sold'];
+            if (!in_array($status, $validStatuses)) {
+                return ["success" => false, "message" => "Invalid status value."];
+            }
+
+            $result = $this->update($cropId, ['status' => $status], 'crop_id');
+            
+            if ($result === false) {
+                return ["success" => false, "message" => "Failed to update crop status."];
+            } elseif ($result === 0) {
+                return ["success" => false, "message" => "Crop not found or no changes made."];
+            } else {
+                return ["success" => true, "message" => "Crop status updated successfully."];
+            }
+        } catch (Exception $e) {
+            return ["success" => false, "message" => "Database error: " . $e->getMessage()];
+        }
+    }
+
     public function deleteCrop($cropId) {
         try {
+            // Check if crop has associated products
+            $productCheck = $this->executeQuery(
+                "SELECT COUNT(*) as count FROM product WHERE crop_id = :crop_id",
+                [':crop_id' => $cropId]
+            );
+            
+            if ($productCheck && $productCheck[0]['count'] > 0) {
+                return [
+                    "success" => false, 
+                    "message" => "Cannot delete crop. It has associated products. Delete products first."
+                ];
+            }
+            
+            // Check if crop exists
+            $crop = $this->getCropById($cropId);
+            if (!$crop) {
+                return ["success" => false, "message" => "Crop not found."];
+            }
+            
             $result = $this->delete($cropId, 'crop_id');
             
             if ($result) {
                 return ["success" => true, "message" => "Crop deleted successfully."];
             } else {
-                return ["success" => false, "message" => "Crop not found."];
+                return ["success" => false, "message" => "Failed to delete crop."];
             }
         } catch (Exception $e) {
             return ["success" => false, "message" => "Database error: " . $e->getMessage()];
@@ -127,7 +177,7 @@ class CropModel extends BaseModel {
     }
 
     public function searchCrops($searchTerm) {
-        $sql = "SELECT crop_id, crop_name, crop_duration, quantity 
+        $sql = "SELECT crop_id, crop_name, crop_duration, quantity, status 
                 FROM {$this->table} 
                 WHERE crop_name LIKE :search
                 ORDER BY crop_id DESC";
@@ -143,7 +193,10 @@ class CropModel extends BaseModel {
                     SUM(quantity) as total_quantity,
                     AVG(crop_duration) as avg_duration,
                     MIN(quantity) as min_quantity,
-                    MAX(quantity) as max_quantity
+                    MAX(quantity) as max_quantity,
+                    SUM(CASE WHEN status = 'Available' THEN 1 ELSE 0 END) as available_count,
+                    SUM(CASE WHEN status = 'Unavailable' THEN 1 ELSE 0 END) as unavailable_count,
+                    SUM(CASE WHEN status = 'Sold' THEN 1 ELSE 0 END) as sold_count
                 FROM {$this->table}";
         
         $result = $this->executeQuery($sql);
@@ -151,7 +204,7 @@ class CropModel extends BaseModel {
     }
 
     public function getLowQuantityCrops($threshold = 10) {
-        $sql = "SELECT crop_id, crop_name, crop_duration, quantity 
+        $sql = "SELECT crop_id, crop_name, crop_duration, quantity, status 
                 FROM {$this->table} 
                 WHERE quantity <= :threshold
                 ORDER BY quantity ASC";
@@ -162,8 +215,14 @@ class CropModel extends BaseModel {
     }
 
     public function getCropsByStatus($status) {
-        // Since status column doesn't exist, return all crops
-        return $this->getAllCrops();
+        $sql = "SELECT crop_id, crop_name, crop_duration, quantity, status 
+                FROM {$this->table} 
+                WHERE status = :status
+                ORDER BY crop_id DESC";
+        
+        $params = [':status' => $status];
+        
+        return $this->executeQuery($sql, $params);
     }
 
     public function cropNameExists($cropName, $excludeId = null) {
@@ -184,6 +243,7 @@ class CropModel extends BaseModel {
                     crop_name,
                     quantity,
                     crop_duration,
+                    status,
                     CASE 
                         WHEN quantity <= 5 THEN 'Critical'
                         WHEN quantity <= 15 THEN 'Low'
