@@ -122,9 +122,6 @@ class Validator {
         $value = floatval($value);
 
         if ($min !== null && $value < $min) {
-            if ($fieldName === 'Land size' && $min > 0) {
-                throw new Exception("Land size must be positive.");
-            }
             throw new Exception("{$fieldName} must be at least {$min}.");
         }
 

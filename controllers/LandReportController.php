@@ -490,32 +490,17 @@ class LandReportController {
     }
 
     /**
-     * Generate land suitability conclusion
+     * Get land reports for assignment management
+     * Returns reports with assignment status and supervisor information
      */
-    public function generateConclusion($reportId) {
+    public function getAssignmentReports() {
         try {
             SessionManager::requireAuth();
+            SessionManager::requireRole(['Operational_Manager']);
+
+            $reports = $this->landReportModel->getAssignmentReports();
             
-            $currentUserId = SessionManager::getCurrentUserId();
-            $currentRole = SessionManager::getCurrentUserRole();
-            
-            // Check if user can access this report
-            $report = $this->landReportModel->getReportById($reportId);
-            if (!$report) {
-                Response::notFound("Land report not found");
-            }
-            
-            if ($report['user_id'] != $currentUserId && !in_array($currentRole, ['Financial_Manager', 'Operational_Manager'])) {
-                Response::forbidden("Access denied");
-            }
-            
-            $result = $this->landReportModel->generateLandConclusion($reportId);
-            
-            if ($result['success']) {
-                Response::success("Land conclusion generated successfully", $result['data']);
-            } else {
-                Response::error($result['message']);
-            }
+            Response::success("Assignment reports retrieved successfully", $reports);
             
         } catch (Exception $e) {
             Response::error($e->getMessage());
@@ -523,31 +508,13 @@ class LandReportController {
     }
 
     /**
-     * Create proposal request for suitable land
+     * Public version - Get land reports for assignment management
      */
-    public function createProposalRequest($reportId) {
+    public function getAssignmentReportsPublic() {
         try {
-            SessionManager::requireAuth();
+            $reports = $this->landReportModel->getAssignmentReports();
             
-            $currentUserId = SessionManager::getCurrentUserId();
-            
-            // Check if user owns this report
-            $report = $this->landReportModel->getReportById($reportId);
-            if (!$report) {
-                Response::notFound("Land report not found");
-            }
-            
-            if ($report['user_id'] != $currentUserId) {
-                Response::forbidden("You can only create proposals for your own land reports");
-            }
-            
-            $result = $this->landReportModel->createProposalRequest($reportId, $currentUserId);
-            
-            if ($result['success']) {
-                Response::success($result['message'], ['request_id' => $result['request_id']], 201);
-            } else {
-                Response::error($result['message']);
-            }
+            Response::success("Assignment reports retrieved successfully (public)", $reports);
             
         } catch (Exception $e) {
             Response::error($e->getMessage());
@@ -555,50 +522,17 @@ class LandReportController {
     }
 
     /**
-     * Get proposal requests for financial manager
+     * Get land reports for review and approval
+     * Returns completed reports waiting for operational manager review
      */
-    public function getProposalRequests() {
+    public function getReviewReports() {
         try {
             SessionManager::requireAuth();
-            SessionManager::requireRole(['Financial_Manager']);
+            SessionManager::requireRole(['Operational_Manager']);
+
+            $reports = $this->landReportModel->getReviewReports();
             
-            $status = $_GET['status'] ?? null;
-            
-            $sql = "SELECT 
-                        pr.*,
-                        lr.land_description,
-                        lr.ph_value,
-                        lr.organic_matter,
-                        lr.nitrogen_level,
-                        lr.phosphorus_level,
-                        lr.potassium_level,
-                        l.location,
-                        l.size,
-                        u.first_name,
-                        u.last_name,
-                        u.email,
-                        u.phone
-                    FROM proposal_requests pr
-                    JOIN land_report lr ON pr.report_id = lr.report_id
-                    JOIN land l ON pr.land_id = l.land_id
-                    JOIN user u ON pr.user_id = u.user_id";
-            
-            $params = [];
-            if ($status) {
-                $sql .= " WHERE pr.status = :status";
-                $params[':status'] = $status;
-            }
-            
-            $sql .= " ORDER BY pr.created_at DESC";
-            
-            $requests = $this->landReportModel->executeQuery($sql, $params);
-            
-            // Parse JSON crop recommendations
-            foreach ($requests as &$request) {
-                $request['crop_recommendations'] = json_decode($request['crop_recommendations'] ?? '[]', true);
-            }
-            
-            Response::success("Proposal requests retrieved successfully", $requests);
+            Response::success("Review reports retrieved successfully", $reports);
             
         } catch (Exception $e) {
             Response::error($e->getMessage());
@@ -606,21 +540,13 @@ class LandReportController {
     }
 
     /**
-     * Create interest request for FarmMaster partnership (simple version)
+     * Public version - Get land reports for review
      */
-    public function createInterestRequest($reportId) {
+    public function getReviewReportsPublic() {
         try {
-            SessionManager::requireAuth();
+            $reports = $this->landReportModel->getReviewReports();
             
-            $currentUserId = SessionManager::getCurrentUserId();
-            
-            $result = $this->landReportModel->createInterestRequest($reportId, $currentUserId);
-            
-            if ($result['success']) {
-                Response::success($result['message'], ['request_id' => $result['request_id']], 201);
-            } else {
-                Response::error($result['message']);
-            }
+            Response::success("Review reports retrieved successfully (public)", $reports);
             
         } catch (Exception $e) {
             Response::error($e->getMessage());
@@ -628,96 +554,71 @@ class LandReportController {
     }
 
     /**
-     * Check if interest request exists for a report
+     * Submit review decision for a land report
      */
-    public function checkInterestRequest($reportId) {
-        try {
-            // No authentication required for checking - this is for UI display purposes
-            $result = $this->landReportModel->hasInterestRequest($reportId);
-            
-            if ($result['success']) {
-                Response::success('Interest request check completed', [
-                    'has_request' => $result['has_request'],
-                    'request' => $result['request']
-                ]);
-            } else {
-                Response::error($result['message']);
-            }
-            
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    /**
-     * Get interest requests for financial manager
-     */
-    public function getInterestRequests() {
+    public function submitReview($reportId) {
         try {
             SessionManager::requireAuth();
-            SessionManager::requireRole(['Financial_Manager']);
-            
-            // Use the same method as our working debug version
-            $result = $this->landReportModel->getInterestRequestsDebug();
-            
-            if ($result['success']) {
-                Response::success("Interest requests retrieved successfully", $result['data']);
-            } else {
-                Response::error($result['message']);
-            }
-            
-        } catch (Exception $e) {
-            Response::error("Error in getInterestRequests: " . $e->getMessage());
-        }
-    }
+            SessionManager::requireRole(['Operational_Manager']);
 
-    /**
-     * Get interest requests for debugging (public endpoint)
-     */
-    public function getInterestRequestsPublic() {
-        try {
-            $result = $this->landReportModel->getInterestRequestsDebug();
-            
-            if ($result['success']) {
-                Response::success("Interest requests retrieved successfully (DEBUG)", $result['data']);
-            } else {
-                Response::error($result['message']);
-            }
-            
-        } catch (Exception $e) {
-            Response::error("Debug error: " . $e->getMessage());
-        }
-    }
-
-    /**
-     * Update interest request status
-     */
-    public function updateInterestRequestStatus($requestId) {
-        try {
-            SessionManager::requireAuth();
-            SessionManager::requireRole(['Financial_Manager']);
-            
             $data = json_decode(file_get_contents("php://input"), true);
             
-            if (!$data || !isset($data['status'])) {
-                Response::error("Status is required");
-                return;
+            if (!$data || !isset($data['decision'])) {
+                Response::error("Review decision is required");
             }
-            
-            $allowedStatuses = ['pending', 'under_review', 'approved', 'rejected'];
-            if (!in_array($data['status'], $allowedStatuses)) {
-                Response::error("Invalid status. Allowed values: " . implode(', ', $allowedStatuses));
-                return;
+
+            $allowedDecisions = ['Approve', 'Request Revisions'];
+            if (!in_array($data['decision'], $allowedDecisions)) {
+                Response::error("Invalid decision. Must be 'Approve' or 'Request Revisions'");
             }
+
+            $feedback = isset($data['feedback']) ? $data['feedback'] : '';
             
-            $notes = $data['notes'] ?? null;
+            $result = $this->landReportModel->submitReview($reportId, $data['decision'], $feedback);
             
-            $result = $this->landReportModel->updateInterestRequestStatus($requestId, $data['status'], $notes);
-            
-            if ($result['success']) {
-                Response::success($result['message']);
+            if ($result) {
+                Response::success("Review submitted successfully", [
+                    'report_id' => $reportId,
+                    'decision' => $data['decision'],
+                    'feedback' => $feedback
+                ]);
             } else {
-                Response::error($result['message']);
+                Response::error("Failed to submit review");
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Public version - Submit review decision
+     */
+    public function submitReviewPublic($reportId) {
+        try {
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data || !isset($data['decision'])) {
+                Response::error("Review decision is required");
+            }
+
+            $allowedDecisions = ['Approve', 'Request Revisions'];
+            if (!in_array($data['decision'], $allowedDecisions)) {
+                Response::error("Invalid decision. Must be 'Approve' or 'Request Revisions'");
+            }
+
+            $feedback = isset($data['feedback']) ? $data['feedback'] : '';
+            
+            $result = $this->landReportModel->submitReview($reportId, $data['decision'], $feedback);
+            
+            if ($result) {
+                Response::success("Review submitted successfully (public)", [
+                    'report_id' => $reportId,
+                    'decision' => $data['decision'],
+                    'feedback' => $feedback
+                ]);
+            } else {
+                Response::error("Failed to submit review");
             }
             
         } catch (Exception $e) {

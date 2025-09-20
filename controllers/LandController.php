@@ -100,7 +100,6 @@ class LandController {
 
             $userId = SessionManager::getCurrentUserId();
             $size = Validator::required($data['size'] ?? '', 'Size');
-            $size = Validator::numeric($size, 'Land size', 0.1); // Minimum 0.1 acres
             $location = Validator::required($data['location'] ?? '', 'Location');
             $paymentStatus = isset($data['payment_status']) ? 
                            Validator::inArray($data['payment_status'], $this->validPaymentStatus, 'Payment status') : 
@@ -156,8 +155,7 @@ class LandController {
             $landData = [];
 
             if (isset($data['size'])) {
-                $size = Validator::required($data['size'], 'Size');
-                $landData['size'] = Validator::numeric($size, 'Land size', 0.1); // Minimum 0.1 acres
+                $landData['size'] = Validator::required($data['size'], 'Size');
             }
             if (isset($data['location'])) {
                 $landData['location'] = Validator::required($data['location'], 'Location');
