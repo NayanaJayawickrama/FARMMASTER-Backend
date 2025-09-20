@@ -334,7 +334,7 @@ class LandReportModel extends BaseModel {
     }
 
     /**
-     * Get available supervisors (Field Supervisors who are not currently assigned to pending reports)
+     * Get available supervisors (Supervisors who are not currently assigned to pending reports)
      * Supervisors are considered available when:
      * 1. They have no assignments, OR
      * 2. All their assignments have status 'Approved', 'Rejected', or 'Completed'
@@ -342,7 +342,7 @@ class LandReportModel extends BaseModel {
     public function getAvailableSupervisors() {
         try {
             // Get supervisors who are not currently assigned to any pending land report
-            // Only users with user_role = 'Field Supervisor' and are active
+            // Only users with user_role = 'Supervisor' and are active
             // A supervisor is considered "assigned" if they appear in environmental_notes of a report
             // that has status = '' (pending) or other non-completed statuses
             $sql = "SELECT 
@@ -367,7 +367,7 @@ class LandReportModel extends BaseModel {
                         AND (status = '' OR status IS NULL OR status NOT IN ('Approved', 'Rejected', 'Completed'))
                         AND SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) REGEXP '^[0-9]+$'
                     ) assigned_reports ON u.user_id = assigned_reports.supervisor_id
-                    WHERE u.user_role = 'Field Supervisor' 
+                    WHERE u.user_role = 'Supervisor' 
                     AND u.is_active = 1
                     AND assigned_reports.supervisor_id IS NULL
                     ORDER BY u.first_name, u.last_name";
