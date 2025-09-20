@@ -196,26 +196,7 @@ class UserController {
         }
     }
 
-    public function logout() {
-        SessionManager::destroySession();
-        Response::success("Logout successful");
-    }
 
-    public function checkSession() {
-        if (SessionManager::isSessionExpired()) {
-            SessionManager::destroySession();
-            Response::error("Session expired. Please login again", 401);
-        }
-
-        if (SessionManager::isLoggedIn()) {
-            SessionManager::updateLastActivity();
-            Response::success("Session is active", [
-                "user_data" => SessionManager::getUserSession()
-            ]);
-        }
-
-        Response::error("No active session", 401);
-    }
 
     public function getAllUsers() {
         try {
@@ -667,6 +648,64 @@ class UserController {
 
         } catch (Exception $e) {
             Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Check session validity
+     */
+    public function checkSession() {
+        try {
+            // Check if user is logged in and session is not expired
+            if (!SessionManager::isLoggedIn() || SessionManager::isSessionExpired()) {
+                Response::error("Session expired or not authenticated", 401);
+                return;
+            }
+
+            // Update last activity
+            SessionManager::updateLastActivity();
+            
+            // Get user session data
+            $sessionData = SessionManager::getUserSession();
+            
+            if (!$sessionData) {
+                Response::error("Invalid session data", 401);
+                return;
+            }
+
+            // Map database role to frontend role
+            $frontendRole = $this->roleMapping[$sessionData['user_role']] ?? $sessionData['user_role'];
+            
+            // Prepare user data for frontend
+            $userData = [
+                'id' => $sessionData['user_id'],
+                'role' => $frontendRole,
+                'first_name' => $sessionData['first_name'],
+                'last_name' => $sessionData['last_name'],
+                'email' => $sessionData['email'],
+                'phone' => $sessionData['phone']
+            ];
+
+            Response::success("Session is valid", [
+                'user_data' => $userData,
+                'session_id' => session_id(),
+                'last_activity' => $sessionData['last_activity']
+            ]);
+
+        } catch (Exception $e) {
+            Response::error("Session verification failed: " . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Logout user by destroying session
+     */
+    public function logout() {
+        try {
+            SessionManager::destroySession();
+            Response::success("Logout successful");
+        } catch (Exception $e) {
+            Response::error("Logout failed: " . $e->getMessage(), 500);
         }
     }
 
