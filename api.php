@@ -372,7 +372,12 @@ class APIRouter {
                 }
                 break;
             case 'POST':
-                $controller->createProposal();
+                if (isset($segments[1]) && $segments[1] === 'generate-from-request') {
+                    // Generate proposal from request: proposals/generate-from-request
+                    $controller->generateProposalFromRequest();
+                } else {
+                    $controller->createProposal();
+                }
                 break;
             case 'PUT':
                 if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status') {
@@ -540,9 +545,24 @@ class APIRouter {
                     } else if ($segments[1] === 'supervisors-public') {
                         // Public endpoint for supervisors: land-reports/supervisors-public
                         $controller->getAvailableSupervisorsPublic();
+                    } else if ($segments[1] === 'proposal-requests') {
+                        // Get proposal requests for financial manager: land-reports/proposal-requests
+                        $controller->getProposalRequests();
+                    } else if ($segments[1] === 'interest-requests') {
+                        // Get interest requests for financial manager: land-reports/interest-requests
+                        $controller->getInterestRequests();
+                    } else if ($segments[1] === 'interest-requests-public') {
+                        // Public debug endpoint: land-reports/interest-requests-public
+                        $controller->getInterestRequestsPublic();
                     } else if (isset($segments[2]) && $segments[2] === 'public') {
                         // Public endpoint for single report: land-reports/{id}/public
                         $controller->getReportPublic($segments[1]);
+                    } else if (isset($segments[2]) && $segments[2] === 'conclusion') {
+                        // Generate conclusion for report: land-reports/{id}/conclusion
+                        $controller->generateConclusion($segments[1]);
+                    } else if (isset($segments[2]) && $segments[2] === 'interest-request-check') {
+                        // Check if interest request exists: land-reports/{id}/interest-request-check
+                        $controller->checkInterestRequest($segments[1]);
                     } else {
                         $controller->getReport($segments[1]);
                     }
@@ -556,7 +576,15 @@ class APIRouter {
                 }
                 break;
             case 'POST':
-                $controller->createReport();
+                if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'proposal-request') {
+                    // Create proposal request: land-reports/{id}/proposal-request
+                    $controller->createProposalRequest($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'interest-request') {
+                    // Create interest request: land-reports/{id}/interest-request
+                    $controller->createInterestRequest($segments[1]);
+                } else {
+                    $controller->createReport();
+                }
                 break;
             case 'PUT':
                 if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status') {
@@ -570,6 +598,12 @@ class APIRouter {
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'assign-public') {
                     // Public assign supervisor: land-reports/{id}/assign-public
                     $controller->assignSupervisorPublic($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'proposal-request-status') {
+                    // Update proposal request status: land-reports/proposal-requests/{id}/status
+                    $controller->updateProposalRequestStatus($segments[1]);
+                } else if ($segments[1] === 'interest-requests' && isset($segments[2])) {
+                    // Update interest request status: land-reports/interest-requests/{id}/status
+                    $controller->updateInterestRequestStatus($segments[2]);
                 } else if (isset($segments[1])) {
                     $controller->updateReport($segments[1]);
                 } else {

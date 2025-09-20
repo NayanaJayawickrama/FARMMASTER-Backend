@@ -17,7 +17,180 @@ class LandReportController {
      */
     public function getAllReports() {
         try {
+            Se    /**
+     * Get available supervisors (public endpoint for testing)
+     */
+    public function getAvailableSupervisorsPublic() {
+        try {
+            $supervisors = $this->landReportModel->getAvailableSupervisors();
+            
+            Response::success("Available supervisors retrieved successfully (public)", $supervisors);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Generate land suitability conclusion
+     */
+    public function generateConclusion($reportId) {
+        try {
             SessionManager::requireAuth();
+            
+            $currentUserId = SessionManager::getCurrentUserId();
+            $currentRole = SessionManager::getCurrentUserRole();
+            
+            // Check if user can access this report
+            $report = $this->landReportModel->getReportById($reportId);
+            if (!$report) {
+                Response::notFound("Land report not found");
+            }
+            
+            if ($report['user_id'] != $currentUserId && !in_array($currentRole, ['Financial_Manager', 'Operational_Manager'])) {
+                Response::forbidden("Access denied");
+            }
+            
+            $result = $this->landReportModel->generateLandConclusion($reportId);
+            
+            if ($result['success']) {
+                Response::success("Land conclusion generated successfully", $result['data']);
+            } else {
+                Response::error($result['message']);
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Create proposal request for suitable land
+     */
+    public function createProposalRequest($reportId) {
+        try {
+            SessionManager::requireAuth();
+            
+            $currentUserId = SessionManager::getCurrentUserId();
+            
+            // Check if user owns this report
+            $report = $this->landReportModel->getReportById($reportId);
+            if (!$report) {
+                Response::notFound("Land report not found");
+            }
+            
+            if ($report['user_id'] != $currentUserId) {
+                Response::forbidden("You can only create proposals for your own land reports");
+            }
+            
+            $result = $this->landReportModel->createProposalRequest($reportId, $currentUserId);
+            
+            if ($result['success']) {
+                Response::success($result['message'], ['request_id' => $result['request_id']], 201);
+            } else {
+                Response::error($result['message']);
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get proposal requests for financial manager
+     */
+    public function getProposalRequests() {
+        try {
+            SessionManager::requireAuth();
+            SessionManager::requireRole(['Financial_Manager']);
+            
+            $status = $_GET['status'] ?? null;
+            
+            $sql = "SELECT 
+                        pr.*,
+                        lr.land_description,
+                        lr.ph_value,
+                        lr.organic_matter,
+                        lr.nitrogen_level,
+                        lr.phosphorus_level,
+                        lr.potassium_level,
+                        l.location,
+                        l.size,
+                        u.first_name,
+                        u.last_name,
+                        u.email,
+                        u.phone
+                    FROM proposal_requests pr
+                    JOIN land_report lr ON pr.report_id = lr.report_id
+                    JOIN land l ON pr.land_id = l.land_id
+                    JOIN user u ON pr.user_id = u.user_id";
+            
+            $params = [];
+            if ($status) {
+                $sql .= " WHERE pr.status = :status";
+                $params[':status'] = $status;
+            }
+            
+            $sql .= " ORDER BY pr.created_at DESC";
+            
+            $requests = $this->landReportModel->executeQuery($sql, $params);
+            
+            // Parse JSON crop recommendations
+            foreach ($requests as &$request) {
+                $request['crop_recommendations'] = json_decode($request['crop_recommendations'] ?? '[]', true);
+            }
+            
+            Response::success("Proposal requests retrieved successfully", $requests);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Update proposal request status
+     */
+    public function updateProposalRequestStatus($requestId) {
+        try {
+            SessionManager::requireAuth();
+            SessionManager::requireRole(['Financial_Manager']);
+            
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data) {
+                Response::error("Invalid JSON data");
+            }
+            
+            $status = Validator::inArray($data['status'] ?? '', 
+                ['pending_review', 'under_review', 'proposal_generated', 'rejected'], 'Status');
+            
+            $notes = $data['notes'] ?? null;
+            
+            $sql = "UPDATE proposal_requests SET status = :status";
+            $params = [':status' => $status, ':request_id' => $requestId];
+            
+            if ($notes) {
+                $sql .= ", financial_manager_notes = :notes";
+                $params[':notes'] = $notes;
+            }
+            
+            $sql .= ", updated_at = CURRENT_TIMESTAMP WHERE request_id = :request_id";
+            
+            $result = $this->landReportModel->executeQuery($sql, $params);
+            
+            if ($result !== false) {
+                Response::success("Proposal request status updated successfully");
+            } else {
+                Response::error("Failed to update proposal request status");
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+}
+
+?>quireAuth();
             SessionManager::requireRole(['Financial_Manager', 'Operational_Manager']);
 
             $filters = [];
@@ -483,242 +656,6 @@ class LandReportController {
             $supervisors = $this->landReportModel->getAvailableSupervisors();
             
             Response::success("Available supervisors retrieved successfully (public)", $supervisors);
-            
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    /**
-     * Generate land suitability conclusion
-     */
-    public function generateConclusion($reportId) {
-        try {
-            SessionManager::requireAuth();
-            
-            $currentUserId = SessionManager::getCurrentUserId();
-            $currentRole = SessionManager::getCurrentUserRole();
-            
-            // Check if user can access this report
-            $report = $this->landReportModel->getReportById($reportId);
-            if (!$report) {
-                Response::notFound("Land report not found");
-            }
-            
-            if ($report['user_id'] != $currentUserId && !in_array($currentRole, ['Financial_Manager', 'Operational_Manager'])) {
-                Response::forbidden("Access denied");
-            }
-            
-            $result = $this->landReportModel->generateLandConclusion($reportId);
-            
-            if ($result['success']) {
-                Response::success("Land conclusion generated successfully", $result['data']);
-            } else {
-                Response::error($result['message']);
-            }
-            
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    /**
-     * Create proposal request for suitable land
-     */
-    public function createProposalRequest($reportId) {
-        try {
-            SessionManager::requireAuth();
-            
-            $currentUserId = SessionManager::getCurrentUserId();
-            
-            // Check if user owns this report
-            $report = $this->landReportModel->getReportById($reportId);
-            if (!$report) {
-                Response::notFound("Land report not found");
-            }
-            
-            if ($report['user_id'] != $currentUserId) {
-                Response::forbidden("You can only create proposals for your own land reports");
-            }
-            
-            $result = $this->landReportModel->createProposalRequest($reportId, $currentUserId);
-            
-            if ($result['success']) {
-                Response::success($result['message'], ['request_id' => $result['request_id']], 201);
-            } else {
-                Response::error($result['message']);
-            }
-            
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    /**
-     * Get proposal requests for financial manager
-     */
-    public function getProposalRequests() {
-        try {
-            SessionManager::requireAuth();
-            SessionManager::requireRole(['Financial_Manager']);
-            
-            $status = $_GET['status'] ?? null;
-            
-            $sql = "SELECT 
-                        pr.*,
-                        lr.land_description,
-                        lr.ph_value,
-                        lr.organic_matter,
-                        lr.nitrogen_level,
-                        lr.phosphorus_level,
-                        lr.potassium_level,
-                        l.location,
-                        l.size,
-                        u.first_name,
-                        u.last_name,
-                        u.email,
-                        u.phone
-                    FROM proposal_requests pr
-                    JOIN land_report lr ON pr.report_id = lr.report_id
-                    JOIN land l ON pr.land_id = l.land_id
-                    JOIN user u ON pr.user_id = u.user_id";
-            
-            $params = [];
-            if ($status) {
-                $sql .= " WHERE pr.status = :status";
-                $params[':status'] = $status;
-            }
-            
-            $sql .= " ORDER BY pr.created_at DESC";
-            
-            $requests = $this->landReportModel->executeQuery($sql, $params);
-            
-            // Parse JSON crop recommendations
-            foreach ($requests as &$request) {
-                $request['crop_recommendations'] = json_decode($request['crop_recommendations'] ?? '[]', true);
-            }
-            
-            Response::success("Proposal requests retrieved successfully", $requests);
-            
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    /**
-     * Create interest request for FarmMaster partnership (simple version)
-     */
-    public function createInterestRequest($reportId) {
-        try {
-            SessionManager::requireAuth();
-            
-            $currentUserId = SessionManager::getCurrentUserId();
-            
-            $result = $this->landReportModel->createInterestRequest($reportId, $currentUserId);
-            
-            if ($result['success']) {
-                Response::success($result['message'], ['request_id' => $result['request_id']], 201);
-            } else {
-                Response::error($result['message']);
-            }
-            
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    /**
-     * Check if interest request exists for a report
-     */
-    public function checkInterestRequest($reportId) {
-        try {
-            // No authentication required for checking - this is for UI display purposes
-            $result = $this->landReportModel->hasInterestRequest($reportId);
-            
-            if ($result['success']) {
-                Response::success('Interest request check completed', [
-                    'has_request' => $result['has_request'],
-                    'request' => $result['request']
-                ]);
-            } else {
-                Response::error($result['message']);
-            }
-            
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    /**
-     * Get interest requests for financial manager
-     */
-    public function getInterestRequests() {
-        try {
-            SessionManager::requireAuth();
-            SessionManager::requireRole(['Financial_Manager']);
-            
-            // Use the same method as our working debug version
-            $result = $this->landReportModel->getInterestRequestsDebug();
-            
-            if ($result['success']) {
-                Response::success("Interest requests retrieved successfully", $result['data']);
-            } else {
-                Response::error($result['message']);
-            }
-            
-        } catch (Exception $e) {
-            Response::error("Error in getInterestRequests: " . $e->getMessage());
-        }
-    }
-
-    /**
-     * Get interest requests for debugging (public endpoint)
-     */
-    public function getInterestRequestsPublic() {
-        try {
-            $result = $this->landReportModel->getInterestRequestsDebug();
-            
-            if ($result['success']) {
-                Response::success("Interest requests retrieved successfully (DEBUG)", $result['data']);
-            } else {
-                Response::error($result['message']);
-            }
-            
-        } catch (Exception $e) {
-            Response::error("Debug error: " . $e->getMessage());
-        }
-    }
-
-    /**
-     * Update interest request status
-     */
-    public function updateInterestRequestStatus($requestId) {
-        try {
-            SessionManager::requireAuth();
-            SessionManager::requireRole(['Financial_Manager']);
-            
-            $data = json_decode(file_get_contents("php://input"), true);
-            
-            if (!$data || !isset($data['status'])) {
-                Response::error("Status is required");
-                return;
-            }
-            
-            $allowedStatuses = ['pending', 'under_review', 'approved', 'rejected'];
-            if (!in_array($data['status'], $allowedStatuses)) {
-                Response::error("Invalid status. Allowed values: " . implode(', ', $allowedStatuses));
-                return;
-            }
-            
-            $notes = $data['notes'] ?? null;
-            
-            $result = $this->landReportModel->updateInterestRequestStatus($requestId, $data['status'], $notes);
-            
-            if ($result['success']) {
-                Response::success($result['message']);
-            } else {
-                Response::error($result['message']);
-            }
             
         } catch (Exception $e) {
             Response::error($e->getMessage());
