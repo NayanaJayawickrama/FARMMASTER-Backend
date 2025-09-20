@@ -334,17 +334,10 @@ class LandReportModel extends BaseModel {
     }
 
     /**
-     * Get available supervisors (Supervisors who are not currently assigned to pending reports)
-     * Supervisors are considered available when:
-     * 1. They have no assignments, OR
-     * 2. All their assignments have status 'Approved', 'Rejected', or 'Completed'
+     * Get available supervisors (Field Supervisors not currently assigned to pending reports)
      */
     public function getAvailableSupervisors() {
         try {
-            // Get supervisors who are not currently assigned to any pending land report
-            // Only users with user_role = 'Supervisor' and are active
-            // A supervisor is considered "assigned" if they appear in environmental_notes of a report
-            // that has status = '' (pending) or other non-completed statuses
             $sql = "SELECT 
                         u.user_id,
                         u.first_name,
@@ -367,16 +360,13 @@ class LandReportModel extends BaseModel {
                         AND (status = '' OR status IS NULL OR status NOT IN ('Approved', 'Rejected', 'Completed'))
                         AND SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) REGEXP '^[0-9]+$'
                     ) assigned_reports ON u.user_id = assigned_reports.supervisor_id
-                    WHERE u.user_role = 'Supervisor' 
+                    WHERE u.user_role = 'Field Supervisor' 
                     AND u.is_active = 1
                     AND assigned_reports.supervisor_id IS NULL
                     ORDER BY u.first_name, u.last_name";
 
             $result = $this->executeQuery($sql);
             
-            error_log("Available supervisors query result: " . print_r($result, true));
-            
-            // Return only unassigned supervisors from database - no fallback data
             return $result ? $result : [];
 
         } catch (Exception $e) {
@@ -566,6 +556,370 @@ class LandReportModel extends BaseModel {
         } catch (Exception $e) {
             error_log("Error in submitReview: " . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Create a new land report
+     */
+    public function createReport($data) {
+        try {
+            $reportData = [
+                'land_id' => $data['land_id'],
+                'user_id' => $data['user_id'],
+                'report_date' => $data['report_date'] ?? date('Y-m-d H:i:s'),
+                'land_description' => $data['land_description'],
+                'crop_recomendation' => $data['crop_recomendation'],
+                'status' => $data['status'] ?? 'Pending'
+            ];
+
+            // Optional fields
+            if (isset($data['ph_value'])) {
+                $reportData['ph_value'] = $data['ph_value'];
+            }
+            if (isset($data['organic_matter'])) {
+                $reportData['organic_matter'] = $data['organic_matter'];
+            }
+            if (isset($data['nitrogen_level'])) {
+                $reportData['nitrogen_level'] = $data['nitrogen_level'];
+            }
+            if (isset($data['phosphorus_level'])) {
+                $reportData['phosphorus_level'] = $data['phosphorus_level'];
+            }
+            if (isset($data['potassium_level'])) {
+                $reportData['potassium_level'] = $data['potassium_level'];
+            }
+            if (isset($data['environmental_notes'])) {
+                $reportData['environmental_notes'] = $data['environmental_notes'];
+            }
+
+            return $this->create($reportData);
+            
+        } catch (Exception $e) {
+            error_log("Error creating report: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get reports by user with filters
+     */
+    public function getReportsByUser($userId, $filters = []) {
+        $allFilters = array_merge(['user_id' => $userId], $filters);
+        return $this->getAllReports($allFilters);
+    }
+
+    /**
+     * Generate land suitability conclusion based on soil data
+     */
+    public function generateLandConclusion($reportId) {
+        try {
+            $report = $this->getReportById($reportId);
+            if (!$report) {
+                return ["success" => false, "message" => "Report not found."];
+            }
+
+            // Simple analysis - just check if we can recommend crops
+            $canRecommendCrops = $this->canRecommendCrops($report);
+            
+            $conclusion = [
+                'is_good_for_organic' => $canRecommendCrops,
+                'conclusion_text' => $canRecommendCrops ? 
+                    "SUITABLE - Good for organic farming - Based on your soil data, we can recommend suitable crops for organic farming on your land." :
+                    "NOT SUITABLE - Not ideal for organic farming - Your current soil conditions need improvement before we can recommend organic crops.",
+                'recommended_crops' => $canRecommendCrops ? $this->getSimpleCropRecommendations($report) : [],
+                'status' => $canRecommendCrops ? 'good' : 'needs_improvement'
+            ];
+
+            // Update the report with simple conclusion
+            $updateData = [
+                'conclusion' => json_encode($conclusion),
+                'suitability_status' => $canRecommendCrops ? 'suitable' : 'not_suitable'
+            ];
+            
+            $this->update($reportId, $updateData, 'report_id');
+            
+            return ["success" => true, "data" => $conclusion];
+
+        } catch (Exception $e) {
+            return ["success" => false, "message" => "Error generating conclusion: " . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Simple check - can we recommend crops based on soil data?
+     */
+    private function canRecommendCrops($report) {
+        $ph = floatval($report['ph_value'] ?? 0);
+        $organicMatter = floatval($report['organic_matter'] ?? 0);
+        
+        // Handle text-based nutrient levels (High, Medium, Low)
+        $nitrogen = $report['nitrogen_level'] ?? '';
+        $phosphorus = $report['phosphorus_level'] ?? '';
+        $potassium = $report['potassium_level'] ?? '';
+        
+        // Convert text levels to boolean "acceptable"
+        $nitrogenOK = in_array(strtolower($nitrogen), ['high', 'medium']);
+        $phosphorusOK = in_array(strtolower($phosphorus), ['high', 'medium']);
+        $potassiumOK = in_array(strtolower($potassium), ['high', 'medium']);
+        
+        // More realistic criteria for Sri Lankan soils
+        $phOK = ($ph >= 5.0 && $ph <= 8.5);
+        $organicMatterOK = ($organicMatter >= 1.5);
+        
+        // At least pH and organic matter should be good, plus at least 2 out of 3 nutrients
+        $nutrientCount = ($nitrogenOK ? 1 : 0) + ($phosphorusOK ? 1 : 0) + ($potassiumOK ? 1 : 0);
+        
+        return $phOK && $organicMatterOK && $nutrientCount >= 2;
+    }
+
+    /**
+     * Get simple crop recommendations
+     */
+    private function getSimpleCropRecommendations($report) {
+        $crops = [];
+        
+        $ph = floatval($report['ph_value'] ?? 0);
+        $organicMatter = floatval($report['organic_matter'] ?? 0);
+        
+        // More flexible recommendations - most soils can grow something organically
+        if ($ph >= 6.0 && $ph <= 7.5 && $organicMatter >= 2.5) {
+            // Excellent conditions
+            $crops = ['Tomatoes', 'Lettuce', 'Carrots', 'Beans', 'Cabbage', 'Spinach'];
+        } elseif ($ph >= 5.5 && $ph <= 8.0 && $organicMatter >= 1.8) {
+            // Good conditions
+            $crops = ['Potatoes', 'Onions', 'Radishes', 'Spinach', 'Beans'];
+        } elseif ($ph >= 5.0 && $ph <= 8.5) {
+            // Basic conditions - still workable
+            $crops = ['Sweet Potatoes', 'Cassava', 'Ginger', 'Turmeric'];
+        } else {
+            // Very challenging conditions
+            $crops = ['Banana', 'Papaya']; // These are more tolerant
+        }
+        
+        return $crops;
+    }
+
+    /**
+     * Create interest request for FarmMaster partnership
+     */
+    public function createInterestRequest($reportId, $userId) {
+        try {
+            // Check if report exists and is suitable
+            $report = $this->getReportById($reportId);
+            if (!$report) {
+                return ["success" => false, "message" => "Land report not found."];
+            }
+
+            if ($report['user_id'] != $userId) {
+                return ["success" => false, "message" => "You can only create requests for your own land."];
+            }
+
+            // Check if land is marked as suitable
+            if ($report['suitability_status'] !== 'suitable') {
+                return ["success" => false, "message" => "Only suitable land can request partnership."];
+            }
+
+            // Check if request already exists
+            $existingRequest = $this->getInterestRequestByReportId($reportId);
+            if ($existingRequest) {
+                return ["success" => false, "message" => "Interest request already exists for this land report."];
+            }
+
+            // Create the interest request
+            $sql = "INSERT INTO interest_requests (report_id, land_id, user_id, status, created_at, updated_at) 
+                    VALUES (:report_id, :land_id, :user_id, 'pending', NOW(), NOW())";
+            
+            $params = [
+                ':report_id' => $reportId,
+                ':land_id' => $report['land_id'],
+                ':user_id' => $userId
+            ];
+
+            $this->executeQuery($sql, $params);
+            $requestId = $this->db->lastInsertId();
+
+            return [
+                "success" => true, 
+                "message" => "Interest request sent to Financial Manager successfully!", 
+                "request_id" => $requestId
+            ];
+
+        } catch (Exception $e) {
+            return ["success" => false, "message" => "Error creating interest request: " . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Get interest request by report ID
+     */
+    private function getInterestRequestByReportId($reportId) {
+        $sql = "SELECT * FROM interest_requests WHERE report_id = :report_id";
+        $result = $this->executeQuery($sql, [':report_id' => $reportId]);
+        return $result ? $result[0] : null;
+    }
+
+    /**
+     * Check if interest request exists for a report (public method)
+     */
+    public function hasInterestRequest($reportId) {
+        try {
+            $request = $this->getInterestRequestByReportId($reportId);
+            return [
+                "success" => true,
+                "has_request" => $request !== null,
+                "request" => $request
+            ];
+        } catch (Exception $e) {
+            return ["success" => false, "message" => "Error checking interest request: " . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Create proposal request for suitable land
+     */
+    public function createProposalRequest($reportId, $userId) {
+        try {
+            $report = $this->getReportById($reportId);
+            if (!$report) {
+                return ["success" => false, "message" => "Report not found."];
+            }
+
+            // Check if land is suitable
+            $conclusion = json_decode($report['conclusion'] ?? '{}', true);
+            if (!$conclusion['is_suitable']) {
+                return ["success" => false, "message" => "Land is not suitable for organic farming proposal."];
+            }
+
+            // Check if proposal request already exists
+            $existingRequest = $this->getProposalRequestByReportId($reportId);
+            if ($existingRequest) {
+                return ["success" => false, "message" => "Proposal request already exists for this land report."];
+            }
+
+            // Create proposal request
+            $proposalRequestData = [
+                'report_id' => $reportId,
+                'user_id' => $userId,
+                'land_id' => $report['land_id'],
+                'request_date' => date('Y-m-d H:i:s'),
+                'status' => 'pending_review',
+                'crop_recommendations' => json_encode($conclusion['crop_recommendations']),
+                'suitability_score' => $conclusion['suitability_score']
+            ];
+
+            $sql = "INSERT INTO proposal_requests (report_id, user_id, land_id, request_date, status, crop_recommendations, suitability_score) 
+                    VALUES (:report_id, :user_id, :land_id, :request_date, :status, :crop_recommendations, :suitability_score)";
+            
+            $stmt = $this->db->prepare($sql);
+            $result = $stmt->execute([
+                ':report_id' => $proposalRequestData['report_id'],
+                ':user_id' => $proposalRequestData['user_id'],
+                ':land_id' => $proposalRequestData['land_id'],
+                ':request_date' => $proposalRequestData['request_date'],
+                ':status' => $proposalRequestData['status'],
+                ':crop_recommendations' => $proposalRequestData['crop_recommendations'],
+                ':suitability_score' => $proposalRequestData['suitability_score']
+            ]);
+
+            if ($result) {
+                $requestId = $this->db->lastInsertId();
+                return [
+                    "success" => true, 
+                    "message" => "Proposal request submitted successfully. Our financial team will review and create a proposal for you.",
+                    "request_id" => $requestId
+                ];
+            } else {
+                return ["success" => false, "message" => "Failed to create proposal request."];
+            }
+
+        } catch (Exception $e) {
+            return ["success" => false, "message" => "Error creating proposal request: " . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Get proposal request by report ID
+     */
+    private function getProposalRequestByReportId($reportId) {
+        $sql = "SELECT * FROM proposal_requests WHERE report_id = :report_id";
+        $result = $this->executeQuery($sql, [':report_id' => $reportId]);
+        return $result ? $result[0] : null;
+    }
+
+    /**
+     * Get interest requests (public debug method)
+     */
+    public function getInterestRequestsDebug() {
+        try {
+            $sql = "SELECT 
+                        ir.*,
+                        lr.land_description,
+                        lr.ph_value,
+                        lr.organic_matter,
+                        lr.nitrogen_level,
+                        lr.phosphorus_level,
+                        lr.potassium_level,
+                        lr.conclusion,
+                        l.location,
+                        l.size,
+                        u.first_name,
+                        u.last_name,
+                        u.email,
+                        u.phone
+                    FROM interest_requests ir
+                    JOIN land_report lr ON ir.report_id = lr.report_id
+                    JOIN land l ON ir.land_id = l.land_id
+                    JOIN user u ON ir.user_id = u.user_id
+                    ORDER BY ir.created_at DESC";
+            
+            $requests = $this->executeQuery($sql, []);
+            
+            // Parse JSON conclusions
+            foreach ($requests as &$request) {
+                if ($request['conclusion']) {
+                    $request['conclusion'] = json_decode($request['conclusion'], true);
+                }
+            }
+            
+            return [
+                'success' => true,
+                'data' => $requests
+            ];
+            
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Debug error: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Update interest request status
+     */
+    public function updateInterestRequestStatus($requestId, $status, $notes = null) {
+        try {
+            $sql = "UPDATE interest_requests SET status = :status";
+            $params = [':status' => $status, ':request_id' => $requestId];
+            
+            if ($notes) {
+                $sql .= ", financial_manager_notes = :notes";
+                $params[':notes'] = $notes;
+            }
+            
+            $sql .= ", updated_at = CURRENT_TIMESTAMP WHERE request_id = :request_id";
+            
+            $result = $this->executeQuery($sql, $params);
+            
+            if ($result !== false) {
+                return ['success' => true, 'message' => 'Interest request status updated successfully'];
+            } else {
+                return ['success' => false, 'message' => 'Failed to update interest request status'];
+            }
+            
+        } catch (Exception $e) {
+            return ['success' => false, 'message' => 'Error updating status: ' . $e->getMessage()];
         }
     }
 }
