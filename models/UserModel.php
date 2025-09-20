@@ -166,175 +166,121 @@ class UserModel extends BaseModel {
         return $this->executeQuery($sql, $params);
     }
 
-    public function getDashboardStatistics() {
+    public function storePasswordResetToken($userId, $token, $expiry) {
+        // First, clear any existing tokens for this user
+        $this->clearPasswordResetToken($userId);
+        
+        // Insert new token - you might need to create a password_resets table
+        // For now, we'll store it in the user table with additional columns
+        $sql = "UPDATE {$this->table} SET reset_token = :token, reset_token_expiry = :expiry WHERE user_id = :user_id";
+        return $this->executeStatement($sql, [
+            ':token' => $token,
+            ':expiry' => $expiry,
+            ':user_id' => $userId
+        ]);
+    }
+
+    public function getUserByResetToken($email, $token) {
+        $sql = "SELECT * FROM {$this->table} 
+                WHERE email = :email 
+                AND reset_token = :token 
+                AND reset_token_expiry > NOW()";
+        $result = $this->executeQuery($sql, [
+            ':email' => $email,
+            ':token' => $token
+        ]);
+        return $result ? $result[0] : null;
+    }
+
+    public function clearPasswordResetToken($userId) {
+        $sql = "UPDATE {$this->table} SET reset_token = NULL, reset_token_expiry = NULL WHERE user_id = :user_id";
+        return $this->executeStatement($sql, [':user_id' => $userId]);
+    }
+
+    /**
+     * Check if user has a secondary role
+     */
+    public function userHasSecondaryRole($userId, $role) {
+        $sql = "SELECT COUNT(*) as count FROM user_roles WHERE user_id = :user_id AND role = :role";
+        $result = $this->executeQuery($sql, [
+            ':user_id' => $userId,
+            ':role' => $role
+        ]);
+        return $result && $result[0]['count'] > 0;
+    }
+
+    /**
+     * Grant secondary role to user
+     */
+    public function grantSecondaryRole($userId, $role) {
         try {
-            $stats = [];
-
-            // Total active users
-            $sql = "SELECT COUNT(*) as total_users FROM {$this->table} WHERE is_active = 1";
-            $result = $this->executeQuery($sql);
-            $stats['total_users'] = $result ? $result[0]['total_users'] : 0;
-            $sql = "SELECT COUNT(*) as total_users FROM {$this->table} WHERE is_active = 1";
-            $result = $this->executeQuery($sql);
-            $stats['total_users'] = $result ? $result[0]['total_users'] : 0;
-
-            // Try to get pending land reports, but provide fallback if table doesn't exist
-            try {
-                $sql = "SELECT COUNT(*) as pending_reports FROM land_report WHERE status = 'Pending'";
-                $result = $this->executeQuery($sql);
-                $stats['pending_reports'] = $result ? $result[0]['pending_reports'] : 0;
-            } catch (Exception $e) {
-                // Fallback if land_report table doesn't exist
-                $stats['pending_reports'] = 0;
-            }
-
-            // Try to get assigned supervisors, but provide fallback if table doesn't exist
-            try {
-                $sql = "SELECT COUNT(DISTINCT environmental_notes) as assigned_supervisors 
-                        FROM land_report 
-                        WHERE status = 'Assigned' AND environmental_notes IS NOT NULL AND environmental_notes != ''";
-                $result = $this->executeQuery($sql);
-                $stats['assigned_supervisors'] = $result ? $result[0]['assigned_supervisors'] : 0;
-            } catch (Exception $e) {
-                // Fallback if land_report table doesn't exist
-                $stats['assigned_supervisors'] = 0;
-            }
-
-            // Try to get active cultivations, but provide fallback if table doesn't exist
-            try {
-                $sql = "SELECT COUNT(*) as active_cultivations FROM harvest WHERE yield_amount > 0";
-                $result = $this->executeQuery($sql);
-                $stats['active_cultivations'] = $result ? $result[0]['active_cultivations'] : 0;
-            } catch (Exception $e) {
-                // Fallback if harvest table doesn't exist - use alternate calculation
-                try {
-                    // Try using proposal table as alternative
-                    $sql = "SELECT COUNT(*) as active_cultivations FROM proposal WHERE status = 'approved'";
-                    $result = $this->executeQuery($sql);
-                    $stats['active_cultivations'] = $result ? $result[0]['active_cultivations'] : 0;
-                } catch (Exception $e2) {
-                    // Ultimate fallback
-                    $stats['active_cultivations'] = 0;
-                }
-            }
-
-            return $stats;
-
+            $sql = "INSERT INTO user_roles (user_id, role, is_active) VALUES (:user_id, :role, FALSE) 
+                    ON DUPLICATE KEY UPDATE created_date = CURRENT_TIMESTAMP";
+            return $this->executeStatement($sql, [
+                ':user_id' => $userId,
+                ':role' => $role
+            ]);
         } catch (Exception $e) {
-            error_log("Error in getDashboardStatistics: " . $e->getMessage());
-            // Return default values instead of false to avoid frontend errors
-            return [
-                'total_users' => 0,
-                'pending_reports' => 0,
-                'assigned_supervisors' => 0,
-                'active_cultivations' => 0
-            ];
+            throw new Exception("Failed to grant secondary role: " . $e->getMessage());
         }
     }
 
-    public function getRecentActivity($limit = 5) {
+    /**
+     * Set active role for user (null means use original role)
+     */
+    public function setActiveRole($userId, $role) {
         try {
-            $activities = [];
+            // First deactivate all secondary roles for this user
+            $this->executeStatement(
+                "UPDATE user_roles SET is_active = FALSE WHERE user_id = :user_id",
+                [':user_id' => $userId]
+            );
 
-            // Get recent land reports (without LIMIT in query, we'll limit in PHP)
-            try {
-                $sql = "SELECT 'land_report' as type, 'Land Report Received' as title, 
-                              CONCAT('Report submitted by ', COALESCE(environmental_notes, 'Unknown')) as description,
-                              created_at as activity_date 
-                        FROM land_report 
-                        ORDER BY created_at DESC";
-                $result = $this->executeQuery($sql);
-                if ($result) {
-                    $activities = array_merge($activities, array_slice($result, 0, $limit));
-                }
-            } catch (Exception $e) {
-                // Table doesn't exist, skip
+            // Update current active role in user table
+            $sql = "UPDATE {$this->table} SET current_active_role = :role WHERE user_id = :user_id";
+            $result = $this->executeStatement($sql, [
+                ':user_id' => $userId,
+                ':role' => $role
+            ]);
+
+            // If switching to a secondary role, mark it as active
+            if ($role && in_array($role, ['Buyer', 'Landowner'])) {
+                $this->executeStatement(
+                    "UPDATE user_roles SET is_active = TRUE WHERE user_id = :user_id AND role = :role",
+                    [':user_id' => $userId, ':role' => $role]
+                );
             }
 
-            // Get recent proposals
-            try {
-                $sql = "SELECT 'proposal' as type, 'Cultivation Proposal Received' as title, 
-                              CONCAT('Proposal submitted for crop type: ', COALESCE(crop_type, 'Unknown')) as description,
-                              created_at as activity_date 
-                        FROM proposal 
-                        ORDER BY created_at DESC";
-                $result = $this->executeQuery($sql);
-                if ($result) {
-                    $activities = array_merge($activities, array_slice($result, 0, $limit));
-                }
-            } catch (Exception $e) {
-                // Table doesn't exist, skip
-            }
-
-            // Get recent user registrations as activity
-            try {
-                $sql = "SELECT 'user' as type, 'New User Registered' as title, 
-                              CONCAT('User registered as ', user_role) as description,
-                              created_at as activity_date 
-                        FROM {$this->table} 
-                        WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                        ORDER BY created_at DESC";
-                $result = $this->executeQuery($sql);
-                if ($result) {
-                    $activities = array_merge($activities, array_slice($result, 0, $limit));
-                }
-            } catch (Exception $e) {
-                // Skip if no created_at column
-            }
-
-            // Sort all activities by date and limit
-            if (!empty($activities)) {
-                usort($activities, function($a, $b) {
-                    return strtotime($b['activity_date']) - strtotime($a['activity_date']);
-                });
-                return array_slice($activities, 0, $limit);
-            }
-
-            // Return sample data as fallback if no real data
-            return [
-                [
-                    'type' => 'land_report',
-                    'title' => 'Land Report Received',
-                    'description' => 'Report submitted by Database Supervisor',
-                    'activity_date' => date('Y-m-d H:i:s')
-                ],
-                [
-                    'type' => 'proposal',
-                    'title' => 'Cultivation Proposal Received',
-                    'description' => 'Proposal submitted for cultivation',
-                    'activity_date' => date('Y-m-d H:i:s', strtotime('-1 hour'))
-                ],
-                [
-                    'type' => 'assignment',
-                    'title' => 'New Land Report Assigned',
-                    'description' => 'Assigned to Supervisor',
-                    'activity_date' => date('Y-m-d H:i:s', strtotime('-2 hours'))
-                ]
-            ];
-
+            return $result;
         } catch (Exception $e) {
-            error_log("Error in getRecentActivity: " . $e->getMessage());
-            // Return sample data as fallback
-            return [
-                [
-                    'type' => 'land_report',
-                    'title' => 'Land Report Received',
-                    'description' => 'Report submitted by Database Supervisor',
-                    'activity_date' => date('Y-m-d H:i:s')
-                ],
-                [
-                    'type' => 'proposal',
-                    'title' => 'Cultivation Proposal Received',
-                    'description' => 'Proposal submitted for cultivation',
-                    'activity_date' => date('Y-m-d H:i:s', strtotime('-1 hour'))
-                ],
-                [
-                    'type' => 'assignment',
-                    'title' => 'New Land Report Assigned',
-                    'description' => 'Assigned to Supervisor',
-                    'activity_date' => date('Y-m-d H:i:s', strtotime('-2 hours'))
-                ]
-            ];
+            throw new Exception("Failed to set active role: " . $e->getMessage());
         }
+    }
+
+    /**
+     * Get current active role for user (returns active role or original role)
+     */
+    public function getCurrentRole($userId) {
+        $sql = "SELECT user_role, current_active_role FROM {$this->table} WHERE user_id = :user_id";
+        $result = $this->executeQuery($sql, [':user_id' => $userId]);
+        
+        if (!$result) {
+            return null;
+        }
+
+        $user = $result[0];
+        return $user['current_active_role'] ?: $user['user_role'];
+    }
+
+    /**
+     * Get user's role switching history
+     */
+    public function getRoleSwitchHistory($userId) {
+        $sql = "SELECT role, is_active, created_date FROM user_roles 
+                WHERE user_id = :user_id 
+                ORDER BY created_date DESC";
+        return $this->executeQuery($sql, [':user_id' => $userId]);
     }
 }
+
+?>

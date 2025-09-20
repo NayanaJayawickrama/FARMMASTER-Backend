@@ -38,6 +38,7 @@ require_once 'controllers/LandReportController.php';
 require_once 'controllers/HarvestController.php';
 require_once 'controllers/PaymentController.php';
 require_once 'controllers/OrderController.php';
+require_once 'controllers/FinancialAnalyticsController.php';
 
 // Simple Router
 class APIRouter {
@@ -55,11 +56,11 @@ class APIRouter {
         $path = trim($path, '/');
         
         // Remove base path if running from subdirectory
-        if (strpos($path, 'v/FARMMASTER-Backend/api.php') === 0) {
-            $path = substr($path, strlen('v/FARMMASTER-Backend/api.php'));
+        if (strpos($path, 'FARMMASTER-Backend/api.php') === 0) {
+            $path = substr($path, strlen('FARMMASTER-Backend/api.php'));
             $path = trim($path, '/');
-        } elseif (strpos($path, 'v/FARMMASTER-Backend/') === 0) {
-            $path = substr($path, strlen('v/FARMMASTER-Backend/'));
+        } elseif (strpos($path, 'FARMMASTER-Backend/') === 0) {
+            $path = substr($path, strlen('FARMMASTER-Backend/'));
             $path = trim($path, '/');
         } elseif (strpos($path, 'FARMMASTER-Backend/api.php') === 0) {
             $path = substr($path, strlen('FARMMASTER-Backend/api.php'));
@@ -134,6 +135,9 @@ class APIRouter {
                 case 'dashboard':
                     $this->handleDashboard($method, $segments);
                     break;
+                case 'financial-analytics':
+                    $this->handleFinancialAnalytics($method, $segments);
+                    break;
                 default:
                     Response::error('Endpoint not found', 404);
             }
@@ -149,6 +153,8 @@ class APIRouter {
             $controller->login();
         } elseif (count($segments) > 1 && $segments[1] === 'register' && $method === 'POST') {
             $controller->register();
+        } elseif (count($segments) > 1 && $segments[1] === 'logout' && $method === 'POST') {
+            $controller->logout();
         } else {
             Response::error('Invalid auth endpoint', 404);
         }
@@ -161,6 +167,25 @@ class APIRouter {
             $controller->login();
         } elseif (count($segments) > 1 && $segments[1] === 'register' && $method === 'POST') {
             $controller->register();
+        } elseif (count($segments) > 1 && $segments[1] === 'forgot-password' && $method === 'POST') {
+            $controller->forgotPassword();
+        } elseif (count($segments) > 1 && $segments[1] === 'reset-password' && $method === 'POST') {
+            $controller->resetPassword();
+        } elseif (count($segments) > 1 && $segments[1] === 'switch-role' && $method === 'POST') {
+            // POST /api/users/switch-role - Switch between Buyer/Landowner roles
+            $controller->switchRole();
+        } elseif (count($segments) > 1 && $segments[1] === 'reset-role' && $method === 'POST') {
+            // POST /api/users/reset-role - Reset to original role
+            $controller->resetRole();
+        } elseif (count($segments) > 1 && $segments[1] === 'available-roles' && $method === 'GET') {
+            // GET /api/users/available-roles - Get available roles for current user
+            $controller->getAvailableRoles();
+        } elseif (count($segments) > 1 && $segments[1] === 'session' && $method === 'GET') {
+            // GET /api/users/session - Check if session is valid
+            $controller->checkSession();
+        } elseif ($method === 'GET' && isset($segments[1]) && is_numeric($segments[1])) {
+            // GET /api/users/{id} - for session verification
+            $controller->getUserById($segments[1]);
         } elseif ($method === 'GET') {
             $controller->getAllUsers();
         } elseif ($method === 'POST') {
@@ -351,7 +376,12 @@ class APIRouter {
                 }
                 break;
             case 'POST':
-                $controller->createProposal();
+                if (isset($segments[1]) && $segments[1] === 'generate-from-request') {
+                    // Generate proposal from request: proposals/generate-from-request
+                    $controller->generateProposalFromRequest();
+                } else {
+                    $controller->createProposal();
+                }
                 break;
             case 'PUT':
                 if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status') {
@@ -519,21 +549,24 @@ class APIRouter {
                     } else if ($segments[1] === 'supervisors-public') {
                         // Public endpoint for supervisors: land-reports/supervisors-public
                         $controller->getAvailableSupervisorsPublic();
-                    } else if ($segments[1] === 'assignments') {
-                        // Get assignment reports: land-reports/assignments
-                        $controller->getAssignmentReports();
-                    } else if ($segments[1] === 'assignments-public') {
-                        // Public endpoint for assignments: land-reports/assignments-public
-                        $controller->getAssignmentReportsPublic();
-                    } else if ($segments[1] === 'reviews') {
-                        // Get review reports: land-reports/reviews
-                        $controller->getReviewReports();
-                    } else if ($segments[1] === 'reviews-public') {
-                        // Public endpoint for reviews: land-reports/reviews-public
-                        $controller->getReviewReportsPublic();
+                    } else if ($segments[1] === 'proposal-requests') {
+                        // Get proposal requests for financial manager: land-reports/proposal-requests
+                        $controller->getProposalRequests();
+                    } else if ($segments[1] === 'interest-requests') {
+                        // Get interest requests for financial manager: land-reports/interest-requests
+                        $controller->getInterestRequests();
+                    } else if ($segments[1] === 'interest-requests-public') {
+                        // Public debug endpoint: land-reports/interest-requests-public
+                        $controller->getInterestRequestsPublic();
                     } else if (isset($segments[2]) && $segments[2] === 'public') {
                         // Public endpoint for single report: land-reports/{id}/public
                         $controller->getReportPublic($segments[1]);
+                    } else if (isset($segments[2]) && $segments[2] === 'conclusion') {
+                        // Generate conclusion for report: land-reports/{id}/conclusion
+                        $controller->generateConclusion($segments[1]);
+                    } else if (isset($segments[2]) && $segments[2] === 'interest-request-check') {
+                        // Check if interest request exists: land-reports/{id}/interest-request-check
+                        $controller->checkInterestRequest($segments[1]);
                     } else {
                         $controller->getReport($segments[1]);
                     }
@@ -547,7 +580,15 @@ class APIRouter {
                 }
                 break;
             case 'POST':
-                $controller->createReport();
+                if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'proposal-request') {
+                    // Create proposal request: land-reports/{id}/proposal-request
+                    $controller->createProposalRequest($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'interest-request') {
+                    // Create interest request: land-reports/{id}/interest-request
+                    $controller->createInterestRequest($segments[1]);
+                } else {
+                    $controller->createReport();
+                }
                 break;
             case 'PUT':
                 if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status') {
@@ -561,12 +602,12 @@ class APIRouter {
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'assign-public') {
                     // Public assign supervisor: land-reports/{id}/assign-public
                     $controller->assignSupervisorPublic($segments[1]);
-                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'review') {
-                    // Submit review: land-reports/{id}/review
-                    $controller->submitReview($segments[1]);
-                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'review-public') {
-                    // Public submit review: land-reports/{id}/review-public
-                    $controller->submitReviewPublic($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'proposal-request-status') {
+                    // Update proposal request status: land-reports/proposal-requests/{id}/status
+                    $controller->updateProposalRequestStatus($segments[1]);
+                } else if ($segments[1] === 'interest-requests' && isset($segments[2])) {
+                    // Update interest request status: land-reports/interest-requests/{id}/status
+                    $controller->updateInterestRequestStatus($segments[2]);
                 } else if (isset($segments[1])) {
                     $controller->updateReport($segments[1]);
                 } else {
@@ -614,6 +655,26 @@ class APIRouter {
             $controller->getRecentActivity();
         } else {
             Response::error('Invalid dashboard endpoint', 404);
+        }
+    }
+
+    private function handleFinancialAnalytics($method, $segments) {
+        $controller = new FinancialAnalyticsController();
+        
+        if ($method === 'GET' && count($segments) > 1 && $segments[1] === 'marketplace') {
+            // GET /api/financial-analytics/marketplace - Get marketplace analytics
+            $controller->getMarketplaceAnalytics();
+        } elseif ($method === 'GET' && count($segments) > 1 && $segments[1] === 'buyers') {
+            // GET /api/financial-analytics/buyers - Get buyer analytics  
+            $controller->getBuyerAnalytics();
+        } elseif ($method === 'GET' && count($segments) > 1 && $segments[1] === 'transactions') {
+            // GET /api/financial-analytics/transactions - Get detailed transaction report
+            $controller->getTransactionReport();
+        } elseif ($method === 'GET' && count($segments) > 1 && $segments[1] === 'land-reports') {
+            // GET /api/financial-analytics/land-reports - Get land report payments
+            $controller->getLandReportPayments();
+        } else {
+            Response::error('Invalid financial analytics endpoint', 404);
         }
     }
 }

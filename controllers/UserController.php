@@ -87,14 +87,28 @@ class UserController {
             $password = Validator::password($data['password'] ?? '');
             $accountType = Validator::inArray($data['user_role'] ?? '', ['Landowner', 'Buyer'], 'Account type');
 
+            // Collect all validation errors
+            $validationErrors = [];
+            
             // Check for existing email
             if ($this->userModel->emailExists($email)) {
-                Response::error("Email already registered");
+                $validationErrors['email'] = "Email already registered";
             }
 
             // Check for existing phone
             if ($this->userModel->phoneExists($phone)) {
-                Response::error("Phone number already registered");
+                $validationErrors['phone'] = "Phone number already registered";
+            }
+
+            // If we have validation errors, return them all
+            if (!empty($validationErrors)) {
+                if (isset($validationErrors['email']) && isset($validationErrors['phone'])) {
+                    Response::error("Email and phone number already registered", 422, $validationErrors);
+                } elseif (isset($validationErrors['email'])) {
+                    Response::error("Email already registered", 422, $validationErrors);
+                } elseif (isset($validationErrors['phone'])) {
+                    Response::error("Phone number already registered", 422, $validationErrors);
+                }
             }
 
             // Create user data
@@ -182,26 +196,7 @@ class UserController {
         }
     }
 
-    public function logout() {
-        SessionManager::destroySession();
-        Response::success("Logout successful");
-    }
 
-    public function checkSession() {
-        if (SessionManager::isSessionExpired()) {
-            SessionManager::destroySession();
-            Response::error("Session expired. Please login again", 401);
-        }
-
-        if (SessionManager::isLoggedIn()) {
-            SessionManager::updateLastActivity();
-            Response::success("Session is active", [
-                "user_data" => SessionManager::getUserSession()
-            ]);
-        }
-
-        Response::error("No active session", 401);
-    }
 
     public function getAllUsers() {
         try {
@@ -458,31 +453,296 @@ class UserController {
         }
     }
 
-    public function getDashboardStats() {
+    public function forgotPassword() {
         try {
-            // Get various statistics for operational manager dashboard
-            $stats = $this->userModel->getDashboardStatistics();
+            $data = json_decode(file_get_contents("php://input"), true);
             
-            if ($stats === false) {
-                Response::error("Failed to fetch dashboard statistics", 500);
+            if (!$data) {
+                Response::error("Invalid JSON data");
             }
 
-            Response::success("Dashboard statistics retrieved successfully", $stats);
+            $email = Validator::email($data['email'] ?? '');
+            $frontendUrl = $data['frontendUrl'] ?? 'http://localhost:5173';
+
+            $user = $this->userModel->getUserByEmail($email);
+
+            if (!$user) {
+                // Don't reveal whether email exists or not for security
+                Response::success("If the email exists, a reset link will be sent");
+                return;
+            }
+
+            // Generate secure reset token
+            $token = bin2hex(random_bytes(32));
+            $expiry = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+            // Store reset token (you'll need to create this method in UserModel)
+            $this->userModel->storePasswordResetToken($user['user_id'], $token, $expiry);
+
+            // Create reset link
+            $resetLink = $frontendUrl . "/reset-password?token=" . $token . "&email=" . urlencode($email);
+
+            // Send email (using PHPMailer)
+            require_once __DIR__ . '/../vendor/autoload.php';
+            
+            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+            $mail->isSMTP();
+            $mail->Host = 'smtp.gmail.com';
+            $mail->SMTPAuth = true;
+            $mail->Username = $_ENV['SMTP_USER'] ?? 'radeeshapraneeth531@gmail.com';
+            $mail->Password = $_ENV['SMTP_PASS'] ?? 'nilbgvvrladdtfzk';
+            $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port = 587;
+
+            $mail->setFrom('noreply@farmmaster.com', 'FarmMaster');
+            $mail->addAddress($email);
+            $mail->Subject = 'Password Reset Request - FarmMaster';
+            $mail->Body = "Hi {$user['first_name']},\n\nYou requested to reset your password. Click the link below to reset it:\n\n{$resetLink}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this, please ignore this email.\n\nBest regards,\nFarmMaster Team";
+
+            $mail->send();
+            
+            Response::success("Password reset email sent successfully");
 
         } catch (Exception $e) {
-            error_log("Error in getDashboardStats: " . $e->getMessage());
-            Response::error("Failed to fetch dashboard statistics: " . $e->getMessage());
+            Response::error("Failed to send reset email: " . $e->getMessage());
         }
     }
 
-    public function getRecentActivity() {
+    public function resetPassword() {
         try {
-            $activities = $this->userModel->getRecentActivity(5);
-            Response::success("Recent activity retrieved successfully", $activities);
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data) {
+                Response::error("Invalid JSON data");
+            }
+
+            $email = Validator::email($data['email'] ?? '');
+            $token = Validator::required($data['token'] ?? '', 'Reset token');
+            $newPassword = Validator::password($data['password'] ?? '');
+            
+            // Verify token and get user
+            $user = $this->userModel->getUserByResetToken($email, $token);
+            
+            if (!$user) {
+                Response::error("Invalid or expired reset token", 400);
+            }
+
+            // Update password
+            $result = $this->userModel->updatePassword($user['user_id'], $newPassword);
+            
+            if (!$result) {
+                Response::error("Failed to update password", 500);
+            }
+
+            // Clear reset token
+            $this->userModel->clearPasswordResetToken($user['user_id']);
+
+            Response::success("Password reset successfully");
 
         } catch (Exception $e) {
-            error_log("Error in getRecentActivity: " . $e->getMessage());
-            Response::error("Failed to fetch recent activity: " . $e->getMessage());
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Switch user role between Buyer and Landowner only
+     */
+    public function switchRole() {
+        try {
+            SessionManager::requireAuth();
+            
+            $currentUserId = SessionManager::getCurrentUserId();
+            $currentRole = SessionManager::getCurrentUserRole();
+            
+            // Only allow Buyer and Landowner to switch roles
+            if (!in_array($currentRole, ['Buyer', 'Landowner'])) {
+                Response::error("Role switching is only available for Buyers and Landowners", 403);
+            }
+
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data) {
+                Response::error("Invalid JSON data");
+            }
+
+            $newRole = Validator::required($data['role'] ?? '', 'New role');
+            
+            // Validate new role - only Buyer or Landowner allowed
+            if (!in_array($newRole, ['Buyer', 'Landowner'])) {
+                Response::error("Can only switch between Buyer and Landowner roles", 400);
+            }
+
+            // Don't allow switching to the same role
+            if ($newRole === $currentRole) {
+                Response::error("You are already in the {$newRole} role", 400);
+            }
+
+            // Check if user has permission to switch to this role
+            $hasRole = $this->userModel->userHasSecondaryRole($currentUserId, $newRole);
+            
+            if (!$hasRole) {
+                // Grant the role if they don't have it yet
+                $this->userModel->grantSecondaryRole($currentUserId, $newRole);
+            }
+
+            // Update current active role
+            $result = $this->userModel->setActiveRole($currentUserId, $newRole);
+            
+            if (!$result) {
+                Response::error("Failed to switch role", 500);
+            }
+
+            // Update session with new role
+            SessionManager::updateUserRole($newRole);
+
+            // Get updated user data
+            $userData = SessionManager::getUserSession();
+            $userData['role'] = $newRole;
+            $userData['switched_from'] = $currentRole;
+
+            Response::success("Role switched successfully", [
+                'user' => $userData,
+                'new_role' => $newRole,
+                'previous_role' => $currentRole
+            ]);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Reset to original role
+     */
+    public function resetRole() {
+        try {
+            SessionManager::requireAuth();
+            
+            $currentUserId = SessionManager::getCurrentUserId();
+            $user = $this->userModel->getUserById($currentUserId);
+            
+            if (!$user) {
+                Response::error("User not found", 404);
+            }
+
+            $originalRole = $user['user_role'];
+            
+            // Reset to original role
+            $result = $this->userModel->setActiveRole($currentUserId, null);
+            
+            if ($result === false) {
+                Response::error("Failed to reset role", 500);
+            }
+
+            // Update session with original role
+            SessionManager::updateUserRole($originalRole);
+
+            // Get updated user data
+            $userData = SessionManager::getUserSession();
+            $userData['role'] = $originalRole;
+
+            Response::success("Role reset to original successfully", [
+                'user' => $userData,
+                'role' => $originalRole
+            ]);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Check session validity
+     */
+    public function checkSession() {
+        try {
+            // Check if user is logged in and session is not expired
+            if (!SessionManager::isLoggedIn() || SessionManager::isSessionExpired()) {
+                Response::error("Session expired or not authenticated", 401);
+                return;
+            }
+
+            // Update last activity
+            SessionManager::updateLastActivity();
+            
+            // Get user session data
+            $sessionData = SessionManager::getUserSession();
+            
+            if (!$sessionData) {
+                Response::error("Invalid session data", 401);
+                return;
+            }
+
+            // Map database role to frontend role
+            $frontendRole = $this->roleMapping[$sessionData['user_role']] ?? $sessionData['user_role'];
+            
+            // Prepare user data for frontend
+            $userData = [
+                'id' => $sessionData['user_id'],
+                'role' => $frontendRole,
+                'first_name' => $sessionData['first_name'],
+                'last_name' => $sessionData['last_name'],
+                'email' => $sessionData['email'],
+                'phone' => $sessionData['phone']
+            ];
+
+            Response::success("Session is valid", [
+                'user_data' => $userData,
+                'session_id' => session_id(),
+                'last_activity' => $sessionData['last_activity']
+            ]);
+
+        } catch (Exception $e) {
+            Response::error("Session verification failed: " . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Logout user by destroying session
+     */
+    public function logout() {
+        try {
+            SessionManager::destroySession();
+            Response::success("Logout successful");
+        } catch (Exception $e) {
+            Response::error("Logout failed: " . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get available roles for current user
+     */
+    public function getAvailableRoles() {
+        try {
+            SessionManager::requireAuth();
+            
+            $currentUserId = SessionManager::getCurrentUserId();
+            $currentRole = SessionManager::getCurrentUserRole();
+            
+            // Only Buyer and Landowner can switch roles
+            if (!in_array($currentRole, ['Buyer', 'Landowner'])) {
+                Response::success("No role switching available", [
+                    'current_role' => $currentRole,
+                    'can_switch' => false,
+                    'available_roles' => []
+                ]);
+                return;
+            }
+
+            // Determine available role to switch to
+            $availableRole = ($currentRole === 'Buyer') ? 'Landowner' : 'Buyer';
+            
+            Response::success("Available roles retrieved", [
+                'current_role' => $currentRole,
+                'can_switch' => true,
+                'available_roles' => [$availableRole],
+                'switch_to' => $availableRole
+            ]);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
         }
     }
 }
+
+?>
