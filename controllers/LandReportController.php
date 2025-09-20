@@ -488,6 +488,143 @@ class LandReportController {
             Response::error($e->getMessage());
         }
     }
+
+    /**
+     * Get land reports for assignment management
+     * Returns reports with assignment status and supervisor information
+     */
+    public function getAssignmentReports() {
+        try {
+            SessionManager::requireAuth();
+            SessionManager::requireRole(['Operational_Manager']);
+
+            $reports = $this->landReportModel->getAssignmentReports();
+            
+            Response::success("Assignment reports retrieved successfully", $reports);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Public version - Get land reports for assignment management
+     */
+    public function getAssignmentReportsPublic() {
+        try {
+            $reports = $this->landReportModel->getAssignmentReports();
+            
+            Response::success("Assignment reports retrieved successfully (public)", $reports);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get land reports for review and approval
+     * Returns completed reports waiting for operational manager review
+     */
+    public function getReviewReports() {
+        try {
+            SessionManager::requireAuth();
+            SessionManager::requireRole(['Operational_Manager']);
+
+            $reports = $this->landReportModel->getReviewReports();
+            
+            Response::success("Review reports retrieved successfully", $reports);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Public version - Get land reports for review
+     */
+    public function getReviewReportsPublic() {
+        try {
+            $reports = $this->landReportModel->getReviewReports();
+            
+            Response::success("Review reports retrieved successfully (public)", $reports);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Submit review decision for a land report
+     */
+    public function submitReview($reportId) {
+        try {
+            SessionManager::requireAuth();
+            SessionManager::requireRole(['Operational_Manager']);
+
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data || !isset($data['decision'])) {
+                Response::error("Review decision is required");
+            }
+
+            $allowedDecisions = ['Approve', 'Request Revisions'];
+            if (!in_array($data['decision'], $allowedDecisions)) {
+                Response::error("Invalid decision. Must be 'Approve' or 'Request Revisions'");
+            }
+
+            $feedback = isset($data['feedback']) ? $data['feedback'] : '';
+            
+            $result = $this->landReportModel->submitReview($reportId, $data['decision'], $feedback);
+            
+            if ($result) {
+                Response::success("Review submitted successfully", [
+                    'report_id' => $reportId,
+                    'decision' => $data['decision'],
+                    'feedback' => $feedback
+                ]);
+            } else {
+                Response::error("Failed to submit review");
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Public version - Submit review decision
+     */
+    public function submitReviewPublic($reportId) {
+        try {
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data || !isset($data['decision'])) {
+                Response::error("Review decision is required");
+            }
+
+            $allowedDecisions = ['Approve', 'Request Revisions'];
+            if (!in_array($data['decision'], $allowedDecisions)) {
+                Response::error("Invalid decision. Must be 'Approve' or 'Request Revisions'");
+            }
+
+            $feedback = isset($data['feedback']) ? $data['feedback'] : '';
+            
+            $result = $this->landReportModel->submitReview($reportId, $data['decision'], $feedback);
+            
+            if ($result) {
+                Response::success("Review submitted successfully (public)", [
+                    'report_id' => $reportId,
+                    'decision' => $data['decision'],
+                    'feedback' => $feedback
+                ]);
+            } else {
+                Response::error("Failed to submit review");
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
 }
 
 ?>

@@ -519,6 +519,18 @@ class APIRouter {
                     } else if ($segments[1] === 'supervisors-public') {
                         // Public endpoint for supervisors: land-reports/supervisors-public
                         $controller->getAvailableSupervisorsPublic();
+                    } else if ($segments[1] === 'assignments') {
+                        // Get assignment reports: land-reports/assignments
+                        $controller->getAssignmentReports();
+                    } else if ($segments[1] === 'assignments-public') {
+                        // Public endpoint for assignments: land-reports/assignments-public
+                        $controller->getAssignmentReportsPublic();
+                    } else if ($segments[1] === 'reviews') {
+                        // Get review reports: land-reports/reviews
+                        $controller->getReviewReports();
+                    } else if ($segments[1] === 'reviews-public') {
+                        // Public endpoint for reviews: land-reports/reviews-public
+                        $controller->getReviewReportsPublic();
                     } else if (isset($segments[2]) && $segments[2] === 'public') {
                         // Public endpoint for single report: land-reports/{id}/public
                         $controller->getReportPublic($segments[1]);
@@ -549,6 +561,12 @@ class APIRouter {
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'assign-public') {
                     // Public assign supervisor: land-reports/{id}/assign-public
                     $controller->assignSupervisorPublic($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'review') {
+                    // Submit review: land-reports/{id}/review
+                    $controller->submitReview($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'review-public') {
+                    // Public submit review: land-reports/{id}/review-public
+                    $controller->submitReviewPublic($segments[1]);
                 } else if (isset($segments[1])) {
                     $controller->updateReport($segments[1]);
                 } else {

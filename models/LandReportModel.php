@@ -384,6 +384,190 @@ class LandReportModel extends BaseModel {
             return [];
         }
     }
+
+    /**
+     * Get land reports for assignment management
+     * Returns reports that need supervisor assignment or reassignment
+     */
+    public function getAssignmentReports() {
+        try {
+            $sql = "SELECT 
+                        lr.report_id,
+                        lr.land_id,
+                        lr.user_id,
+                        lr.report_date,
+                        lr.status,
+                        lr.environmental_notes,
+                        l.location,
+                        l.size,
+                        l.created_at as request_date,
+                        CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
+                        u.email,
+                        u.phone,
+                        CASE 
+                            WHEN lr.environmental_notes LIKE '%Assigned to:%' THEN 
+                                SUBSTRING_INDEX(SUBSTRING_INDEX(lr.environmental_notes, 'Assigned to: ', -1), ' (ID:', 1)
+                            ELSE 'Not Assigned'
+                        END as supervisor_name,
+                        CASE 
+                            WHEN lr.environmental_notes LIKE '%Assigned to:%' THEN 'Assigned'
+                            ELSE 'Unassigned'
+                        END as assignment_status,
+                        CASE 
+                            WHEN lr.status = '' OR lr.status IS NULL THEN 'Assigned'
+                            WHEN lr.status = 'Approved' THEN 'Approved'  
+                            WHEN lr.status = 'Rejected' THEN 'Rejected'
+                            ELSE lr.status
+                        END as current_status
+                    FROM {$this->table} lr
+                    JOIN land l ON lr.land_id = l.land_id
+                    JOIN user u ON lr.user_id = u.user_id
+                    WHERE l.payment_status = 'paid'
+                    ORDER BY lr.report_date DESC, l.created_at DESC";
+            
+            $reports = $this->executeQuery($sql);
+            
+            // Format the data for frontend
+            $formattedReports = [];
+            foreach ($reports as $report) {
+                $formattedReports[] = [
+                    'id' => '#' . date('Y') . '-LR-' . str_pad($report['report_id'], 3, '0', STR_PAD_LEFT),
+                    'report_id' => $report['report_id'],
+                    'location' => $report['location'],
+                    'name' => $report['landowner_name'],
+                    'date' => date('Y-m-d', strtotime($report['request_date'])),
+                    'supervisor' => $report['supervisor_name'],
+                    'status' => $report['assignment_status'],
+                    'current_status' => $report['current_status'],
+                    'land_id' => $report['land_id'],
+                    'user_id' => $report['user_id']
+                ];
+            }
+            
+            return $formattedReports;
+            
+        } catch (Exception $e) {
+            error_log("Error in getAssignmentReports: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get land reports for review and approval
+     * Returns completed reports that need operational manager review
+     */
+    public function getReviewReports() {
+        try {
+            $sql = "SELECT 
+                        lr.report_id,
+                        lr.land_id,
+                        lr.user_id,
+                        lr.report_date,
+                        lr.status,
+                        lr.environmental_notes,
+                        lr.land_description,
+                        lr.crop_recomendation,
+                        lr.ph_value,
+                        lr.organic_matter,
+                        lr.nitrogen_level,
+                        lr.phosphorus_level,
+                        lr.potassium_level,
+                        l.location,
+                        l.size,
+                        CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
+                        CASE 
+                            WHEN lr.environmental_notes LIKE '%Assigned to:%' THEN 
+                                SUBSTRING_INDEX(SUBSTRING_INDEX(lr.environmental_notes, 'Assigned to: ', -1), ' (ID:', 1)
+                            ELSE 'Unknown'
+                        END as supervisor_name,
+                        CASE 
+                            WHEN lr.environmental_notes LIKE '%ID: %' THEN 
+                                CONCAT('SR', LPAD(SUBSTRING_INDEX(SUBSTRING_INDEX(lr.environmental_notes, 'ID: ', -1), ')', 1), 4, '0'))
+                            ELSE 'Unknown'
+                        END as supervisor_id,
+                        CASE 
+                            WHEN lr.status = 'Approved' THEN 'Approved'
+                            WHEN lr.status = 'Rejected' THEN 'Rejected'
+                            WHEN lr.land_description IS NOT NULL AND lr.crop_recomendation IS NOT NULL THEN 'Not Reviewed'
+                            ELSE 'Not Reviewed'
+                        END as review_status
+                    FROM {$this->table} lr
+                    JOIN land l ON lr.land_id = l.land_id
+                    JOIN user u ON lr.user_id = u.user_id
+                    WHERE l.payment_status = 'paid'
+                    AND lr.environmental_notes LIKE '%Assigned to:%'
+                    ORDER BY lr.report_date DESC";
+            
+            $reports = $this->executeQuery($sql);
+            
+            // Format the data for frontend
+            $formattedReports = [];
+            foreach ($reports as $report) {
+                $formattedReports[] = [
+                    'id' => '#' . date('Y') . '-LR-' . str_pad($report['report_id'], 3, '0', STR_PAD_LEFT),
+                    'report_id' => $report['report_id'],
+                    'location' => $report['location'],
+                    'name' => $report['landowner_name'],
+                    'supervisorId' => $report['supervisor_id'],
+                    'supervisor' => $report['supervisor_name'],
+                    'status' => $report['review_status'],
+                    'land_id' => $report['land_id'],
+                    'user_id' => $report['user_id'],
+                    'report_details' => [
+                        'land_description' => $report['land_description'],
+                        'crop_recommendation' => $report['crop_recomendation'],
+                        'ph_value' => $report['ph_value'],
+                        'organic_matter' => $report['organic_matter'],
+                        'nitrogen_level' => $report['nitrogen_level'],
+                        'phosphorus_level' => $report['phosphorus_level'],
+                        'potassium_level' => $report['potassium_level'],
+                        'environmental_notes' => $report['environmental_notes']
+                    ]
+                ];
+            }
+            
+            return $formattedReports;
+            
+        } catch (Exception $e) {
+            error_log("Error in getReviewReports: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Submit review decision for a land report
+     */
+    public function submitReview($reportId, $decision, $feedback = '') {
+        try {
+            // Map frontend decision to database status
+            $status = $decision === 'Approve' ? 'Approved' : 'Rejected';
+            
+            // Prepare feedback to append to environmental_notes
+            $reviewFeedback = "\nReview Decision: {$decision}";
+            if (!empty($feedback)) {
+                $reviewFeedback .= "\nFeedback: {$feedback}";
+            }
+            $reviewFeedback .= "\nReviewed on: " . date('Y-m-d H:i:s');
+            
+            $sql = "UPDATE {$this->table} SET 
+                        status = :status,
+                        environmental_notes = CONCAT(COALESCE(environmental_notes, ''), :feedback)
+                    WHERE report_id = :report_id";
+            
+            $stmt = $this->db->prepare($sql);
+            $result = $stmt->execute([
+                ':status' => $status,
+                ':feedback' => $reviewFeedback,
+                ':report_id' => $reportId
+            ]);
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            error_log("Error in submitReview: " . $e->getMessage());
+            return false;
+        }
+    }
 }
 
 ?>
