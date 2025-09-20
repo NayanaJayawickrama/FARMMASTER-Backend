@@ -225,8 +225,8 @@ class LandReportModel extends BaseModel {
             $conclusion = [
                 'is_good_for_organic' => $canRecommendCrops,
                 'conclusion_text' => $canRecommendCrops ? 
-                    "✅ Good for organic farming - Based on your soil data, we can recommend suitable crops for organic farming on your land." :
-                    "❌ Not ideal for organic farming - Your current soil conditions need improvement before we can recommend organic crops.",
+                    "SUITABLE - Good for organic farming - Based on your soil data, we can recommend suitable crops for organic farming on your land." :
+                    "NOT SUITABLE - Not ideal for organic farming - Your current soil conditions need improvement before we can recommend organic crops.",
                 'recommended_crops' => $canRecommendCrops ? $this->getSimpleCropRecommendations($report) : [],
                 'status' => $canRecommendCrops ? 'good' : 'needs_improvement'
             ];
@@ -523,17 +523,17 @@ class LandReportModel extends BaseModel {
         $score = $suitability['score'];
         
         if ($score >= 80) {
-            $text = "🌱 **Excellent for Organic Farming!**\n\n";
+            $text = "**EXCELLENT FOR ORGANIC FARMING**\n\n";
             $text .= "Your land shows exceptional potential for organic farming with a suitability score of {$score}%. ";
             $text .= "The soil conditions are ideal for sustainable agriculture practices.\n\n";
             $text .= "**Key Strengths:**\n";
             foreach ($suitability['analysis'] as $parameter => $analysis) {
                 if (strpos($analysis, 'Excellent') !== false) {
-                    $text .= "✓ " . ucfirst(str_replace('_', ' ', $parameter)) . ": " . $analysis . "\n";
+                    $text .= "• " . ucfirst(str_replace('_', ' ', $parameter)) . ": " . $analysis . "\n";
                 }
             }
         } elseif ($score >= 60) {
-            $text = "🌾 **Good for Organic Farming**\n\n";
+            $text = "**GOOD FOR ORGANIC FARMING**\n\n";
             $text .= "Your land is suitable for organic farming with a score of {$score}%. ";
             $text .= "With some improvements, you can achieve excellent results.\n\n";
             $text .= "**Areas for Improvement:**\n";
@@ -543,13 +543,13 @@ class LandReportModel extends BaseModel {
                 }
             }
         } else {
-            $text = "⚠️ **Needs Improvement for Organic Farming**\n\n";
+            $text = "**NEEDS IMPROVEMENT FOR ORGANIC FARMING**\n\n";
             $text .= "Your land currently has a suitability score of {$score}%. ";
             $text .= "While organic farming is still possible, significant soil improvements are recommended.\n\n";
             $text .= "**Priority Improvements:**\n";
             foreach ($suitability['analysis'] as $parameter => $analysis) {
                 if (strpos($analysis, 'Poor') !== false || strpos($analysis, 'Fair') !== false) {
-                    $text .= "⚡ " . ucfirst(str_replace('_', ' ', $parameter)) . ": " . $analysis . "\n";
+                    $text .= "• " . ucfirst(str_replace('_', ' ', $parameter)) . ": " . $analysis . "\n";
                 }
             }
         }
@@ -557,7 +557,7 @@ class LandReportModel extends BaseModel {
         if (!empty($cropRecommendations)) {
             $text .= "\n**Recommended Crops:**\n";
             foreach (array_slice($cropRecommendations, 0, 5) as $crop) {
-                $text .= "🌱 {$crop['crop_name']} - {$crop['suitability']} suitability\n";
+                $text .= "• {$crop['crop_name']} - {$crop['suitability']} suitability\n";
             }
         }
 

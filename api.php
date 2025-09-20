@@ -38,6 +38,7 @@ require_once 'controllers/LandReportController.php';
 require_once 'controllers/HarvestController.php';
 require_once 'controllers/PaymentController.php';
 require_once 'controllers/OrderController.php';
+require_once 'controllers/FinancialAnalyticsController.php';
 
 // Simple Router
 class APIRouter {
@@ -133,6 +134,9 @@ class APIRouter {
                     break;
                 case 'dashboard':
                     $this->handleDashboard($method, $segments);
+                    break;
+                case 'financial-analytics':
+                    $this->handleFinancialAnalytics($method, $segments);
                     break;
                 default:
                     Response::error('Endpoint not found', 404);
@@ -651,6 +655,26 @@ class APIRouter {
             $controller->getRecentActivity();
         } else {
             Response::error('Invalid dashboard endpoint', 404);
+        }
+    }
+
+    private function handleFinancialAnalytics($method, $segments) {
+        $controller = new FinancialAnalyticsController();
+        
+        if ($method === 'GET' && count($segments) > 1 && $segments[1] === 'marketplace') {
+            // GET /api/financial-analytics/marketplace - Get marketplace analytics
+            $controller->getMarketplaceAnalytics();
+        } elseif ($method === 'GET' && count($segments) > 1 && $segments[1] === 'buyers') {
+            // GET /api/financial-analytics/buyers - Get buyer analytics  
+            $controller->getBuyerAnalytics();
+        } elseif ($method === 'GET' && count($segments) > 1 && $segments[1] === 'transactions') {
+            // GET /api/financial-analytics/transactions - Get detailed transaction report
+            $controller->getTransactionReport();
+        } elseif ($method === 'GET' && count($segments) > 1 && $segments[1] === 'land-reports') {
+            // GET /api/financial-analytics/land-reports - Get land report payments
+            $controller->getLandReportPayments();
+        } else {
+            Response::error('Invalid financial analytics endpoint', 404);
         }
     }
 }
