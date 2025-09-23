@@ -72,7 +72,6 @@ class CropController {
             }
 
             $cropName = Validator::required($data['crop_name'] ?? '', 'Crop name');
-            $cropDuration = Validator::numeric($data['crop_duration'] ?? 0, 'Crop duration', 1);
             $quantity = Validator::numeric($data['quantity'] ?? 0, 'Quantity', 0);
             $status = isset($data['status']) ? 
                      Validator::inArray($data['status'], $this->validStatus, 'Status') : 
@@ -85,7 +84,6 @@ class CropController {
 
             $cropData = [
                 'crop_name' => $cropName,
-                'crop_duration' => $cropDuration,
                 'quantity' => $quantity,
                 'status' => $status
             ];

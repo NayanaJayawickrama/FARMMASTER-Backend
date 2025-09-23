@@ -360,7 +360,7 @@ class LandReportModel extends BaseModel {
                         AND (status = '' OR status IS NULL OR status NOT IN ('Approved', 'Rejected', 'Completed'))
                         AND SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) REGEXP '^[0-9]+$'
                     ) assigned_reports ON u.user_id = assigned_reports.supervisor_id
-                    WHERE u.user_role = 'Field Supervisor' 
+                    WHERE u.user_role = 'Supervisor' 
                     AND u.is_active = 1
                     AND assigned_reports.supervisor_id IS NULL
                     ORDER BY u.first_name, u.last_name";
@@ -468,12 +468,12 @@ class LandReportModel extends BaseModel {
                         CASE 
                             WHEN lr.environmental_notes LIKE '%Assigned to:%' THEN 
                                 SUBSTRING_INDEX(SUBSTRING_INDEX(lr.environmental_notes, 'Assigned to: ', -1), ' (ID:', 1)
-                            ELSE 'Unknown'
+                            ELSE 'Not Assigned'
                         END as supervisor_name,
                         CASE 
                             WHEN lr.environmental_notes LIKE '%ID: %' THEN 
                                 CONCAT('SR', LPAD(SUBSTRING_INDEX(SUBSTRING_INDEX(lr.environmental_notes, 'ID: ', -1), ')', 1), 4, '0'))
-                            ELSE 'Unknown'
+                            ELSE 'Not Assigned'
                         END as supervisor_id,
                         CASE 
                             WHEN lr.status = 'Approved' THEN 'Approved'
@@ -484,8 +484,6 @@ class LandReportModel extends BaseModel {
                     FROM {$this->table} lr
                     JOIN land l ON lr.land_id = l.land_id
                     JOIN user u ON lr.user_id = u.user_id
-                    WHERE l.payment_status = 'paid'
-                    AND lr.environmental_notes LIKE '%Assigned to:%'
                     ORDER BY lr.report_date DESC";
             
             $reports = $this->executeQuery($sql);
