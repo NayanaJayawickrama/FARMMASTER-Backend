@@ -42,14 +42,14 @@ class LandReportModel extends BaseModel {
                     lr.potassium_level,
                     lr.environmental_notes,
                     lr.status,
-                    COALESCE(l.location, 'Land Deleted') as location,
-                    COALESCE(l.size, 0) as size,
-                    COALESCE(l.payment_status, 'unknown') as payment_status,
+                    l.location,
+                    l.size,
+                    l.payment_status,
                     u.first_name,
                     u.last_name,
                     u.email
                 FROM {$this->table} lr
-                LEFT JOIN land l ON lr.land_id = l.land_id
+                JOIN land l ON lr.land_id = l.land_id
                 JOIN user u ON lr.user_id = u.user_id";
         
         if (!empty($conditions)) {
@@ -64,14 +64,14 @@ class LandReportModel extends BaseModel {
     public function getReportById($reportId) {
         $sql = "SELECT 
                     lr.*,
-                    COALESCE(l.location, 'Land Deleted') as location,
-                    COALESCE(l.size, 0) as size,
-                    COALESCE(l.payment_status, 'unknown') as payment_status,
+                    l.location,
+                    l.size,
+                    l.payment_status,
                     u.first_name,
                     u.last_name,
                     u.email
                 FROM {$this->table} lr
-                LEFT JOIN land l ON lr.land_id = l.land_id
+                JOIN land l ON lr.land_id = l.land_id
                 JOIN user u ON lr.user_id = u.user_id
                 WHERE lr.report_id = :report_id";
         $result = $this->executeQuery($sql, [':report_id' => $reportId]);
@@ -357,10 +357,10 @@ class LandReportModel extends BaseModel {
                         FROM land_report 
                         WHERE environmental_notes LIKE '%Assigned to:%' 
                         AND environmental_notes LIKE '%ID:%'
-                        AND (status = '' OR status IS NULL OR status NOT IN ('Approved', 'Rejected', 'Completed'))
+                        AND (completion_status IS NULL OR completion_status = 'In Progress')
                         AND SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) REGEXP '^[0-9]+$'
                     ) assigned_reports ON u.user_id = assigned_reports.supervisor_id
-                    WHERE u.user_role = 'Field Supervisor' 
+                    WHERE u.user_role = 'Supervisor' 
                     AND u.is_active = 1
                     AND assigned_reports.supervisor_id IS NULL
                     ORDER BY u.first_name, u.last_name";
@@ -410,10 +410,10 @@ class LandReportModel extends BaseModel {
                             ELSE lr.status
                         END as current_status
                     FROM {$this->table} lr
-                    LEFT JOIN land l ON lr.land_id = l.land_id
+                    JOIN land l ON lr.land_id = l.land_id
                     JOIN user u ON lr.user_id = u.user_id
-                    WHERE COALESCE(l.payment_status, 'unknown') = 'paid'
-                    ORDER BY lr.report_date DESC, COALESCE(l.created_at, lr.created_at) DESC";
+                    WHERE l.payment_status = 'paid'
+                    ORDER BY lr.report_date DESC, l.created_at DESC";
             
             $reports = $this->executeQuery($sql);
             
@@ -468,12 +468,12 @@ class LandReportModel extends BaseModel {
                         CASE 
                             WHEN lr.environmental_notes LIKE '%Assigned to:%' THEN 
                                 SUBSTRING_INDEX(SUBSTRING_INDEX(lr.environmental_notes, 'Assigned to: ', -1), ' (ID:', 1)
-                            ELSE 'Unknown'
+                            ELSE 'Not Assigned'
                         END as supervisor_name,
                         CASE 
                             WHEN lr.environmental_notes LIKE '%ID: %' THEN 
                                 CONCAT('SR', LPAD(SUBSTRING_INDEX(SUBSTRING_INDEX(lr.environmental_notes, 'ID: ', -1), ')', 1), 4, '0'))
-                            ELSE 'Unknown'
+                            ELSE 'Not Assigned'
                         END as supervisor_id,
                         CASE 
                             WHEN lr.status = 'Approved' THEN 'Approved'
@@ -482,10 +482,8 @@ class LandReportModel extends BaseModel {
                             ELSE 'Not Reviewed'
                         END as review_status
                     FROM {$this->table} lr
-                    LEFT JOIN land l ON lr.land_id = l.land_id
+                    JOIN land l ON lr.land_id = l.land_id
                     JOIN user u ON lr.user_id = u.user_id
-                    WHERE COALESCE(l.payment_status, 'unknown') = 'paid'
-                    AND lr.environmental_notes LIKE '%Assigned to:%'
                     ORDER BY lr.report_date DESC";
             
             $reports = $this->executeQuery($sql);
@@ -862,14 +860,14 @@ class LandReportModel extends BaseModel {
                         lr.potassium_level,
                         lr.conclusion,
                         l.location,
-                        COALESCE(l.size, 0) as size,
+                        l.size,
                         u.first_name,
                         u.last_name,
                         u.email,
                         u.phone
                     FROM interest_requests ir
                     JOIN land_report lr ON ir.report_id = lr.report_id
-                    LEFT JOIN land l ON ir.land_id = l.land_id
+                    JOIN land l ON ir.land_id = l.land_id
                     JOIN user u ON ir.user_id = u.user_id
                     ORDER BY ir.created_at DESC";
             
@@ -920,6 +918,122 @@ class LandReportModel extends BaseModel {
             
         } catch (Exception $e) {
             return ['success' => false, 'message' => 'Error updating status: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Get assigned land reports for a specific field supervisor
+     */
+    public function getAssignedReportsForSupervisor($supervisorId) {
+        try {
+            // Get supervisor details
+            $supervisorSql = "SELECT first_name, last_name FROM user WHERE user_id = :supervisor_id";
+            $supervisorResult = $this->executeQuery($supervisorSql, [':supervisor_id' => $supervisorId]);
+            
+            if (!$supervisorResult) {
+                return [];
+            }
+            
+            $supervisorName = $supervisorResult[0]['first_name'] . ' ' . $supervisorResult[0]['last_name'];
+            
+        $sql = "SELECT 
+                    lr.report_id,
+                    lr.land_id,
+                    lr.user_id,
+                    lr.report_date,
+                    lr.land_description,
+                    lr.crop_recomendation,
+                    lr.ph_value,
+                    lr.organic_matter,
+                    lr.nitrogen_level,
+                    lr.phosphorus_level,
+                    lr.potassium_level,
+                    lr.environmental_notes,
+                    lr.status,
+                    lr.completion_status,
+                    lr.suitability_status,
+                    l.location,
+                    l.size,
+                    l.payment_status,
+                    u.first_name,
+                    u.last_name,
+                    u.email
+                FROM {$this->table} lr
+                JOIN land l ON lr.land_id = l.land_id
+                JOIN user u ON lr.user_id = u.user_id
+                WHERE lr.environmental_notes LIKE :supervisor_assignment
+                ORDER BY lr.report_date DESC";            $params = [':supervisor_assignment' => '%Assigned to: ' . $supervisorName . ' (ID: ' . $supervisorId . ')%'];
+            
+            $reports = $this->executeQuery($sql, $params);
+            
+            // Process the results to extract assignment status and clean up environmental notes
+            foreach ($reports as &$report) {
+                $report['assignment_status'] = $this->extractAssignmentStatus($report['environmental_notes']);
+                $report['assigned_date'] = $report['report_date']; // Use report_date as assigned date
+                
+                // Generate report ID format
+                $report['formatted_report_id'] = 'RPT-' . date('Y', strtotime($report['report_date'])) . '-' . str_pad($report['report_id'], 3, '0', STR_PAD_LEFT);
+                
+                // Full landowner name
+                $report['landowner_name'] = $report['first_name'] . ' ' . $report['last_name'];
+            }
+            
+            return $reports;
+            
+        } catch (Exception $e) {
+            error_log("Error in getAssignedReportsForSupervisor: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Extract assignment status from environmental notes
+     */
+    private function extractAssignmentStatus($environmentalNotes) {
+        if (empty($environmentalNotes)) {
+            return 'Pending';
+        }
+        
+        if (strpos($environmentalNotes, 'Assigned to:') !== false) {
+            return 'In Progress';
+        }
+        
+        return 'Pending';
+    }
+
+    /**
+     * Update land report with submitted data
+     */
+    public function updateReportData($reportId, $data) {
+        try {
+            $sql = "UPDATE {$this->table} SET 
+                        ph_value = :ph_value,
+                        organic_matter = :organic_matter,
+                        nitrogen_level = :nitrogen_level,
+                        phosphorus_level = :phosphorus_level,
+                        potassium_level = :potassium_level,
+                        environmental_notes = :environmental_notes,
+                        completion_status = :completion_status,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE report_id = :report_id";
+
+            $params = [
+                ':ph_value' => $data['ph_value'],
+                ':organic_matter' => $data['organic_matter'],
+                ':nitrogen_level' => $data['nitrogen_level'],
+                ':phosphorus_level' => $data['phosphorus_level'],
+                ':potassium_level' => $data['potassium_level'],
+                ':environmental_notes' => $data['environmental_notes'],
+                ':completion_status' => $data['completion_status'],
+                ':report_id' => $reportId
+            ];
+
+            $result = $this->executeQuery($sql, $params);
+            return $result !== false;
+            
+        } catch (Exception $e) {
+            error_log("Error in updateReportData: " . $e->getMessage());
+            return false;
         }
     }
 }
