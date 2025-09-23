@@ -174,25 +174,48 @@ class UserModel extends BaseModel {
             $sql = "SELECT COUNT(*) as total_users FROM {$this->table} WHERE is_active = 1";
             $result = $this->executeQuery($sql);
             $stats['total_users'] = $result ? $result[0]['total_users'] : 0;
+            $sql = "SELECT COUNT(*) as total_users FROM {$this->table} WHERE is_active = 1";
+            $result = $this->executeQuery($sql);
+            $stats['total_users'] = $result ? $result[0]['total_users'] : 0;
 
-            // Count of land reports that need review (Not Reviewed status)
+            // Try to get pending land reports, but provide fallback if table doesn't exist
             try {
-                $sql = "SELECT COUNT(*) as pending_reports FROM land_report WHERE status != 'Approved' AND status != 'Rejected'";
+                $sql = "SELECT COUNT(*) as pending_reports FROM land_report WHERE status = 'Pending'";
                 $result = $this->executeQuery($sql);
                 $stats['pending_reports'] = $result ? $result[0]['pending_reports'] : 0;
             } catch (Exception $e) {
+                // Fallback if land_report table doesn't exist
                 $stats['pending_reports'] = 0;
             }
 
-            // Count of reports with supervisor assignments
+            // Try to get assigned supervisors, but provide fallback if table doesn't exist
             try {
-                $sql = "SELECT COUNT(*) as assigned_supervisors 
+                $sql = "SELECT COUNT(DISTINCT environmental_notes) as assigned_supervisors 
                         FROM land_report 
-                        WHERE environmental_notes LIKE '%Assigned to:%'";
+                        WHERE status = 'Assigned' AND environmental_notes IS NOT NULL AND environmental_notes != ''";
                 $result = $this->executeQuery($sql);
                 $stats['assigned_supervisors'] = $result ? $result[0]['assigned_supervisors'] : 0;
             } catch (Exception $e) {
+                // Fallback if land_report table doesn't exist
                 $stats['assigned_supervisors'] = 0;
+            }
+
+            // Try to get active cultivations, but provide fallback if table doesn't exist
+            try {
+                $sql = "SELECT COUNT(*) as active_cultivations FROM harvest WHERE yield_amount > 0";
+                $result = $this->executeQuery($sql);
+                $stats['active_cultivations'] = $result ? $result[0]['active_cultivations'] : 0;
+            } catch (Exception $e) {
+                // Fallback if harvest table doesn't exist - use alternate calculation
+                try {
+                    // Try using proposal table as alternative
+                    $sql = "SELECT COUNT(*) as active_cultivations FROM proposal WHERE status = 'approved'";
+                    $result = $this->executeQuery($sql);
+                    $stats['active_cultivations'] = $result ? $result[0]['active_cultivations'] : 0;
+                } catch (Exception $e2) {
+                    // Ultimate fallback
+                    $stats['active_cultivations'] = 0;
+                }
             }
 
             return $stats;
@@ -203,7 +226,8 @@ class UserModel extends BaseModel {
             return [
                 'total_users' => 0,
                 'pending_reports' => 0,
-                'assigned_supervisors' => 0
+                'assigned_supervisors' => 0,
+                'active_cultivations' => 0
             ];
         }
     }

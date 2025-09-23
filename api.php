@@ -572,9 +572,6 @@ class APIRouter {
                     if ($segments[1] === 'assignments') {
                         // GET /api/land-reports/assignments - NEW ROUTE
                         $controller->getAssignmentReports();
-                    } else if ($segments[1] === 'assigned') {
-                        // GET /api/land-reports/assigned - Get assigned reports for field supervisor
-                        $controller->getAssignedReports();
                     } else if ($segments[1] === 'reviews') {
                         // GET /api/land-reports/reviews - NEW ROUTE
                         $controller->getReviewReports();
@@ -658,9 +655,6 @@ class APIRouter {
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'review-public') {
                     // Submit review public: land-reports/{id}/review-public
                     $controller->submitReviewPublic($segments[1]);
-                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'submit-data') {
-                    // Submit land data: land-reports/{id}/submit-data
-                    $controller->submitLandData($segments[1]);
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'proposal-request-status') {
                     // Update proposal request status: land-reports/proposal-requests/{id}/status
                     $controller->updateProposalRequestStatus($segments[1]);
