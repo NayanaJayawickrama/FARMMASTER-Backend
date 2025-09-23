@@ -337,4 +337,31 @@ class UserModel extends BaseModel {
             ];
         }
     }
+
+    public function getUserAvailableRoles($userId) {
+        $sql = "SELECT DISTINCT role FROM user_roles WHERE user_id = :user_id AND is_active = 1";
+        $result = $this->executeQuery($sql, [':user_id' => $userId]);
+        
+        if ($result) {
+            return array_column($result, 'role');
+        }
+        return [];
+    }
+
+    public function switchUserRole($userId, $newRole) {
+        $sql = "UPDATE {$this->table} SET current_active_role = :new_role WHERE user_id = :user_id";
+        $params = [
+            ':user_id' => $userId,
+            ':new_role' => $newRole
+        ];
+        
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
+    }
+
+    public function resetUserRole($userId) {
+        $sql = "UPDATE {$this->table} SET current_active_role = NULL WHERE user_id = :user_id";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([':user_id' => $userId]);
+    }
 }

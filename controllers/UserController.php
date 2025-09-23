@@ -49,11 +49,17 @@ class UserController {
                 Response::error("Invalid email or password", 401);
             }
 
-            // Create session
+            // Reset user to their default role on login (clear any previous role switches)
+            $this->userModel->resetUserRole($user['user_id']);
+            
+            // Create session with default role
             SessionManager::createUserSession($user);
 
+            // Always use the default user_role on login
+            $effectiveRole = $user['user_role'];
+            
             // Get frontend-friendly role name
-            $frontendRole = $this->roleMapping[$user['user_role']] ?? $user['user_role'];
+            $frontendRole = $this->roleMapping[$effectiveRole] ?? $effectiveRole;
 
             Response::success("Login successful", [
                 "user_id" => $user['user_id'],
@@ -183,12 +189,19 @@ class UserController {
     }
 
     public function logout() {
+        // Clear any role switching state for the current user
+        $userId = SessionManager::getCurrentUserId();
+        if ($userId) {
+            $this->userModel->resetUserRole($userId);
+        }
+        
         SessionManager::destroySession();
         Response::success("Logout successful");
     }
 
     public function checkSession() {
-        if (SessionManager::isSessionExpired()) {
+        // Check session with 5 minute timeout (300 seconds)
+        if (SessionManager::isSessionExpired(300)) {
             SessionManager::destroySession();
             Response::error("Session expired. Please login again", 401);
         }
@@ -481,6 +494,94 @@ class UserController {
         } catch (Exception $e) {
             error_log("Error in getRecentActivity: " . $e->getMessage());
             Response::error("Failed to fetch recent activity: " . $e->getMessage());
+        }
+    }
+
+    public function switchRole() {
+        try {
+            SessionManager::requireAuth();
+            
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data || !isset($data['role'])) {
+                Response::error("Role is required");
+            }
+
+            $userId = SessionManager::getCurrentUserId();
+            $newRole = $data['role'];
+            
+            // Validate that the new role is either Buyer or Landowner
+            if (!in_array($newRole, ['Buyer', 'Landowner'])) {
+                Response::error("Invalid role. Only Buyer and Landowner roles can be switched.");
+            }
+
+            // Check if user has permission to switch to this role
+            $availableRoles = $this->userModel->getUserAvailableRoles($userId);
+            if (!in_array($newRole, $availableRoles)) {
+                Response::error("You don't have permission to switch to this role");
+            }
+
+            // Update the current_active_role in user table
+            $result = $this->userModel->switchUserRole($userId, $newRole);
+            
+            if (!$result) {
+                Response::error("Failed to switch role", 500);
+            }
+
+            // Update session
+            $_SESSION['user_role'] = $newRole;
+            $_SESSION['current_active_role'] = $newRole;
+
+            Response::success("Role switched successfully", ['role' => $newRole]);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function resetRole() {
+        try {
+            SessionManager::requireAuth();
+            
+            $userId = SessionManager::getCurrentUserId();
+            
+            // Get user's original role
+            $user = $this->userModel->getUserById($userId);
+            if (!$user) {
+                Response::error("User not found");
+            }
+
+            $originalRole = $user['user_role'];
+            
+            // Reset to original role by setting current_active_role to NULL
+            $result = $this->userModel->resetUserRole($userId);
+            
+            if (!$result) {
+                Response::error("Failed to reset role", 500);
+            }
+
+            // Update session
+            $_SESSION['user_role'] = $originalRole;
+            unset($_SESSION['current_active_role']);
+
+            Response::success("Role reset successfully", ['role' => $originalRole]);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function getAvailableRoles() {
+        try {
+            SessionManager::requireAuth();
+            
+            $userId = SessionManager::getCurrentUserId();
+            $availableRoles = $this->userModel->getUserAvailableRoles($userId);
+            
+            Response::success("Available roles retrieved successfully", $availableRoles);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
         }
     }
 }
