@@ -20,6 +20,12 @@ class SessionManager {
         $_SESSION['login_time'] = time();
         $_SESSION['last_activity'] = time();
         
+        // Handle role switching - use current_active_role if set, otherwise use default user_role
+        if (isset($userData['current_active_role']) && $userData['current_active_role']) {
+            $_SESSION['current_active_role'] = $userData['current_active_role'];
+            $_SESSION['user_role'] = $userData['current_active_role']; // Set session role to active role
+        }
+        
         // Regenerate session ID for security
         session_regenerate_id(true);
     }
@@ -39,8 +45,9 @@ class SessionManager {
                 'last_name' => $_SESSION['last_name'],
                 'email' => $_SESSION['email'],
                 'phone' => $_SESSION['phone'] ?? null,
-                'login_time' => $_SESSION['login_time'],
-                'last_activity' => $_SESSION['last_activity']
+                'login_time' => $_SESSION['login_time'] ?? null,
+                'last_activity' => $_SESSION['last_activity'] ?? null,
+                'current_active_role' => $_SESSION['current_active_role'] ?? null
             ];
         }
         return null;
@@ -73,7 +80,8 @@ class SessionManager {
     }
 
     public static function requireAuth() {
-        if (!self::isLoggedIn() || self::isSessionExpired()) {
+        // Use 5 minute timeout (300 seconds) to match checkSession
+        if (!self::isLoggedIn() || self::isSessionExpired(300)) {
             Response::unauthorized('Authentication required');
         }
         self::updateLastActivity();
