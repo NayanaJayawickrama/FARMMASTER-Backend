@@ -382,6 +382,23 @@ class LandReportController {
     }
 
     /**
+     * Public version - Get land reports for assignment management
+     */
+    public function getAssignmentReportsPublic() {
+        try {
+            error_log("getAssignmentReportsPublic called - using database data only");
+            
+            $reports = $this->landReportModel->getAssignmentReports();
+            
+            Response::success("Assignment reports retrieved successfully (public)", $reports);
+            
+        } catch (Exception $e) {
+            error_log("Error in getAssignmentReportsPublic: " . $e->getMessage());
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
      * Get land reports for review and approval
      * Returns completed reports waiting for operational manager review
      */
@@ -400,6 +417,23 @@ class LandReportController {
     }
 
     /**
+     * Public version - Get land reports for review and approval
+     */
+    public function getReviewReportsPublic() {
+        try {
+            error_log("getReviewReportsPublic called - using database data only");
+            
+            $reports = $this->landReportModel->getReviewReports();
+            
+            Response::success("Review reports retrieved successfully (public)", $reports);
+            
+        } catch (Exception $e) {
+            error_log("Error in getReviewReportsPublic: " . $e->getMessage());
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
      * Get available supervisors (Field Supervisors not currently assigned)
      */
     public function getAvailableSupervisors() {
@@ -412,6 +446,23 @@ class LandReportController {
             
         } catch (Exception $e) {
             error_log("Error in getAvailableSupervisors: " . $e->getMessage());
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Public version - Get available supervisors
+     */
+    public function getAvailableSupervisorsPublic() {
+        try {
+            error_log("getAvailableSupervisorsPublic called - using database data only");
+            
+            $supervisors = $this->landReportModel->getAvailableSupervisors();
+            
+            Response::success("Available supervisors retrieved successfully (public)", $supervisors);
+            
+        } catch (Exception $e) {
+            error_log("Error in getAvailableSupervisorsPublic: " . $e->getMessage());
             Response::error($e->getMessage());
         }
     }
