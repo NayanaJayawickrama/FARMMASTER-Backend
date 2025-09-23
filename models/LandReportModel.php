@@ -920,6 +920,122 @@ class LandReportModel extends BaseModel {
             return ['success' => false, 'message' => 'Error updating status: ' . $e->getMessage()];
         }
     }
+
+    /**
+     * Get assigned land reports for a specific field supervisor
+     */
+    public function getAssignedReportsForSupervisor($supervisorId) {
+        try {
+            // Get supervisor details
+            $supervisorSql = "SELECT first_name, last_name FROM user WHERE user_id = :supervisor_id";
+            $supervisorResult = $this->executeQuery($supervisorSql, [':supervisor_id' => $supervisorId]);
+            
+            if (!$supervisorResult) {
+                return [];
+            }
+            
+            $supervisorName = $supervisorResult[0]['first_name'] . ' ' . $supervisorResult[0]['last_name'];
+            
+        $sql = "SELECT 
+                    lr.report_id,
+                    lr.land_id,
+                    lr.user_id,
+                    lr.report_date,
+                    lr.land_description,
+                    lr.crop_recomendation,
+                    lr.ph_value,
+                    lr.organic_matter,
+                    lr.nitrogen_level,
+                    lr.phosphorus_level,
+                    lr.potassium_level,
+                    lr.environmental_notes,
+                    lr.status,
+                    lr.completion_status,
+                    lr.suitability_status,
+                    l.location,
+                    l.size,
+                    l.payment_status,
+                    u.first_name,
+                    u.last_name,
+                    u.email
+                FROM {$this->table} lr
+                JOIN land l ON lr.land_id = l.land_id
+                JOIN user u ON lr.user_id = u.user_id
+                WHERE lr.environmental_notes LIKE :supervisor_assignment
+                ORDER BY lr.report_date DESC";            $params = [':supervisor_assignment' => '%Assigned to: ' . $supervisorName . ' (ID: ' . $supervisorId . ')%'];
+            
+            $reports = $this->executeQuery($sql, $params);
+            
+            // Process the results to extract assignment status and clean up environmental notes
+            foreach ($reports as &$report) {
+                $report['assignment_status'] = $this->extractAssignmentStatus($report['environmental_notes']);
+                $report['assigned_date'] = $report['report_date']; // Use report_date as assigned date
+                
+                // Generate report ID format
+                $report['formatted_report_id'] = 'RPT-' . date('Y', strtotime($report['report_date'])) . '-' . str_pad($report['report_id'], 3, '0', STR_PAD_LEFT);
+                
+                // Full landowner name
+                $report['landowner_name'] = $report['first_name'] . ' ' . $report['last_name'];
+            }
+            
+            return $reports;
+            
+        } catch (Exception $e) {
+            error_log("Error in getAssignedReportsForSupervisor: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Extract assignment status from environmental notes
+     */
+    private function extractAssignmentStatus($environmentalNotes) {
+        if (empty($environmentalNotes)) {
+            return 'Pending';
+        }
+        
+        if (strpos($environmentalNotes, 'Assigned to:') !== false) {
+            return 'In Progress';
+        }
+        
+        return 'Pending';
+    }
+
+    /**
+     * Update land report with submitted data
+     */
+    public function updateReportData($reportId, $data) {
+        try {
+            $sql = "UPDATE {$this->table} SET 
+                        ph_value = :ph_value,
+                        organic_matter = :organic_matter,
+                        nitrogen_level = :nitrogen_level,
+                        phosphorus_level = :phosphorus_level,
+                        potassium_level = :potassium_level,
+                        environmental_notes = :environmental_notes,
+                        completion_status = :completion_status,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE report_id = :report_id";
+
+            $params = [
+                ':ph_value' => $data['ph_value'],
+                ':organic_matter' => $data['organic_matter'],
+                ':nitrogen_level' => $data['nitrogen_level'],
+                ':phosphorus_level' => $data['phosphorus_level'],
+                ':potassium_level' => $data['potassium_level'],
+                ':environmental_notes' => $data['environmental_notes'],
+                ':completion_status' => $data['completion_status'],
+                ':report_id' => $reportId
+            ];
+
+            $result = $this->executeQuery($sql, $params);
+            return $result !== false;
+            
+        } catch (Exception $e) {
+            error_log("Error in updateReportData: " . $e->getMessage());
+            return false;
+        }
+    }
 }
 
 ?>

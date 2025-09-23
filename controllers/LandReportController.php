@@ -776,6 +776,100 @@ class LandReportController {
             Response::error($e->getMessage());
         }
     }
+
+    /**
+     * Get assigned land reports for field supervisors
+     */
+    public function getAssignedReports() {
+        try {
+            // TODO: Uncomment for production authentication
+            // SessionManager::requireAuth();
+            // $currentUserId = SessionManager::getCurrentUserId();
+            // $userRole = SessionManager::getCurrentUserRole();
+            
+            // Only field supervisors can access this endpoint
+            // if ($userRole !== 'Field_Supervisor') {
+            //     Response::error("Access denied. Only field supervisors can view assigned reports.");
+            //     return;
+            // }
+
+            // For testing - use a default supervisor ID (replace with session user ID in production)
+            $currentUserId = 40; // njk njkhjhj - Field Supervisor from database
+
+            $reports = $this->landReportModel->getAssignedReportsForSupervisor($currentUserId);
+            
+            Response::success("Assigned land reports retrieved successfully", $reports);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Submit land data and update report status to completed
+     */
+    public function submitLandData($reportId) {
+        try {
+            // TODO: Uncomment for production authentication
+            // SessionManager::requireAuth();
+            // $currentUserId = SessionManager::getCurrentUserId();
+            // $userRole = SessionManager::getCurrentUserRole();
+            
+            // Only field supervisors can submit data
+            // if ($userRole !== 'Field_Supervisor') {
+            //     Response::error("Access denied. Only field supervisors can submit land data.");
+            //     return;
+            // }
+
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data) {
+                Response::error("Invalid JSON data");
+                return;
+            }
+
+            // Validate required fields
+            $required = ['ph_value', 'organic_matter', 'nitrogen_level', 'phosphorus_level', 'potassium_level'];
+            foreach ($required as $field) {
+                if (!isset($data[$field]) || $data[$field] === '') {
+                    Response::error("Field '$field' is required");
+                    return;
+                }
+            }
+
+            // Check if report exists
+            $report = $this->landReportModel->getReportById($reportId);
+            if (!$report) {
+                Response::notFound("Land report not found");
+                return;
+            }
+
+            // Update the report with submitted data
+            $updateData = [
+                'ph_value' => floatval($data['ph_value']),
+                'organic_matter' => floatval($data['organic_matter']),
+                'nitrogen_level' => $data['nitrogen_level'],
+                'phosphorus_level' => $data['phosphorus_level'],
+                'potassium_level' => $data['potassium_level'],
+                'environmental_notes' => $data['environmental_notes'] ?? '',
+                'completion_status' => 'Completed' // Use new completion_status column
+            ];
+
+            $updated = $this->landReportModel->updateReportData($reportId, $updateData);
+            
+            if ($updated) {
+                Response::success("Land data submitted successfully and report marked as completed", [
+                    'report_id' => $reportId,
+                    'completion_status' => 'Completed'
+                ]);
+            } else {
+                Response::error("Failed to submit land data");
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
 }
 
 ?>
