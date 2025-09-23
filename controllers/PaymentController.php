@@ -4,6 +4,7 @@ require_once __DIR__ . '/../models/PaymentModel.php';
 require_once __DIR__ . '/../models/PaymentIntentModel.php';
 require_once __DIR__ . '/../models/LandModel.php';
 require_once __DIR__ . '/../models/CartOrderModel.php';
+require_once __DIR__ . '/../models/CropModel.php';
 require_once __DIR__ . '/../utils/Response.php';
 require_once __DIR__ . '/../utils/Validator.php';
 require_once __DIR__ . '/../utils/SessionManager.php';
@@ -191,6 +192,7 @@ class PaymentController {
     private $intentModel;
     private $landModel;
     private $orderModel;
+    private $cropModel;
     private $stripe;
     private $validPaymentMethods = ['stripe', 'cash', 'bank_transfer'];
     private $validPaymentStatus = ['pending', 'completed', 'failed', 'cancelled', 'refunded'];
@@ -200,6 +202,7 @@ class PaymentController {
         $this->intentModel = new PaymentIntentModel();
         $this->landModel = new LandModel();
         $this->orderModel = new CartOrderModel();
+        $this->cropModel = new CropModel();
         $this->stripe = new StripeService();
     }
 
@@ -478,6 +481,31 @@ class PaymentController {
                             throw new Exception($landResult['message']);
                         }
                     } else if ($paymentType === 'cart_purchase') {
+                        // Reduce inventory quantities before updating order status
+                        if (isset($order['items']) && !empty($order['items'])) {
+                            error_log("Processing inventory reduction for " . count($order['items']) . " items");
+                            
+                            foreach ($order['items'] as $item) {
+                                $productId = $item['product_id'];
+                                $quantity = (int)$item['quantity'];
+                                
+                                // Get crop_id from product_id
+                                $cropId = $this->cropModel->getCropIdByProductId($productId);
+                                if (!$cropId) {
+                                    throw new Exception("Product not found for product ID: {$productId}");
+                                }
+                                
+                                // Reduce crop inventory quantity
+                                $reductionResult = $this->cropModel->reduceQuantity($cropId, $quantity);
+                                if (!$reductionResult['success']) {
+                                    throw new Exception("Inventory reduction failed for product {$productId}: " . $reductionResult['message']);
+                                }
+                                
+                                error_log("Reduced inventory for crop ID {$cropId} (product ID {$productId}): {$quantity} units. " . 
+                                         "Old quantity: {$reductionResult['old_quantity']}, New quantity: {$reductionResult['new_quantity']}");
+                            }
+                        }
+                        
                         // Update order payment status
                         $orderResult = $this->orderModel->updatePaymentStatus($localIntent['cart_order_id'], 'completed');
                         
