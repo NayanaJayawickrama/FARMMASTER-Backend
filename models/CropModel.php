@@ -254,6 +254,63 @@ class CropModel extends BaseModel {
         
         return $this->executeQuery($sql);
     }
+
+    public function reduceQuantity($cropId, $quantityToReduce) {
+        try {
+            // First, get current quantity
+            $crop = $this->getCropById($cropId);
+            if (!$crop) {
+                return ["success" => false, "message" => "Crop not found."];
+            }
+
+            $currentQuantity = (int)$crop['quantity'];
+            if ($currentQuantity < $quantityToReduce) {
+                return [
+                    "success" => false, 
+                    "message" => "Insufficient quantity. Current: {$currentQuantity}, Required: {$quantityToReduce}"
+                ];
+            }
+
+            $newQuantity = $currentQuantity - $quantityToReduce;
+            
+            $sql = "UPDATE {$this->table} SET quantity = :new_quantity WHERE crop_id = :crop_id";
+            $stmt = $this->db->prepare($sql);
+            $result = $stmt->execute([
+                ':new_quantity' => $newQuantity,
+                ':crop_id' => $cropId
+            ]);
+
+            if ($result) {
+                // Update status to 'Sold' if quantity becomes 0
+                if ($newQuantity == 0) {
+                    $this->updateCropStatus($cropId, 'Sold');
+                }
+                
+                return [
+                    "success" => true, 
+                    "message" => "Quantity reduced successfully.",
+                    "old_quantity" => $currentQuantity,
+                    "new_quantity" => $newQuantity
+                ];
+            } else {
+                return ["success" => false, "message" => "Failed to reduce quantity."];
+            }
+
+        } catch (Exception $e) {
+            return ["success" => false, "message" => "Database error: " . $e->getMessage()];
+        }
+    }
+
+    public function getCropIdByProductId($productId) {
+        try {
+            $sql = "SELECT crop_id FROM product WHERE product_id = :product_id";
+            $result = $this->executeQuery($sql, [':product_id' => $productId]);
+            return $result ? $result[0]['crop_id'] : null;
+        } catch (Exception $e) {
+            error_log("Error getting crop_id by product_id: " . $e->getMessage());
+            return null;
+        }
+    }
 }
 
 ?>
