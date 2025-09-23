@@ -31,6 +31,8 @@ class AssessmentModel extends BaseModel {
                     lr.potassium_level,
                     lr.environmental_notes,
                     lr.status as report_status,
+                    lr.conclusion,
+                    lr.completion_status,
                     CASE 
                         WHEN l.payment_status = 'pending' THEN 'Payment Pending'
                         WHEN l.payment_status = 'failed' THEN 'Payment Failed'
@@ -88,7 +90,7 @@ class AssessmentModel extends BaseModel {
                 
                 // Only process each land once (get the latest report if multiple exist)
                 if (!in_array($land_id, $processed_lands)) {
-                    $assessments[] = [
+                    $assessment = [
                         "land_id" => $row["land_id"],
                         "location" => $row["location"],
                         "size" => $row["size"],
@@ -107,9 +109,19 @@ class AssessmentModel extends BaseModel {
                         "environmental_notes" => $row["environmental_notes"],
                         "report_status" => $row["report_status"],
                         "overall_status" => $row["overall_status"],
+                        "completion_status" => $row["completion_status"],
                         "has_report" => !empty($row["report_id"]),
                         "is_paid" => $row["payment_status"] === 'paid'
                     ];
+                    
+                    // Parse JSON conclusion if it exists
+                    if (!empty($row["conclusion"])) {
+                        $assessment["conclusion"] = json_decode($row["conclusion"], true);
+                    } else {
+                        $assessment["conclusion"] = null;
+                    }
+                    
+                    $assessments[] = $assessment;
                     $processed_lands[] = $land_id;
                 }
             }

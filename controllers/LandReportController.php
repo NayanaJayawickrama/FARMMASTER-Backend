@@ -686,6 +686,26 @@ class LandReportController {
     }
 
     /**
+     * Get proposal requests for financial manager (public version for testing)
+     */
+    public function getProposalRequestsPublic() {
+        try {
+            $status = $_GET['status'] ?? null;
+            
+            $result = $this->landReportModel->getProposalRequestsPublic($status);
+            
+            if ($result['success']) {
+                Response::success("Proposal requests retrieved successfully", $result['data']);
+            } else {
+                Response::error($result['message']);
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
      * Create interest request for FarmMaster partnership (simple version)
      */
     public function createInterestRequest($reportId) {

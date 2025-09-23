@@ -787,7 +787,7 @@ class LandReportModel extends BaseModel {
 
             // Check if land is suitable
             $conclusion = json_decode($report['conclusion'] ?? '{}', true);
-            if (!$conclusion['is_suitable']) {
+            if (!isset($conclusion['is_good_for_organic']) || !$conclusion['is_good_for_organic']) {
                 return ["success" => false, "message" => "Land is not suitable for organic farming proposal."];
             }
 
@@ -998,6 +998,74 @@ class LandReportModel extends BaseModel {
             return 'Assigned';
         }
         return 'Unassigned';
+    }
+
+    /**
+     * Get proposal requests (public version for testing)
+     */
+    public function getProposalRequestsPublic($status = null) {
+        try {
+            $sql = "SELECT 
+                        pr.request_id,
+                        pr.report_id,
+                        pr.user_id,
+                        pr.land_id,
+                        pr.request_date,
+                        pr.status,
+                        pr.crop_recommendations,
+                        pr.suitability_score,
+                        pr.financial_manager_notes,
+                        pr.created_at,
+                        pr.updated_at,
+                        lr.report_date,
+                        lr.land_description,
+                        lr.crop_recomendation,
+                        lr.ph_value,
+                        lr.organic_matter,
+                        lr.nitrogen_level,
+                        lr.phosphorus_level,
+                        lr.potassium_level,
+                        lr.environmental_notes,
+                        lr.conclusion,
+                        lr.suitability_status,
+                        lr.completion_status,
+                        l.size as land_size,
+                        l.location as land_location,
+                        u.first_name,
+                        u.last_name,
+                        u.email,
+                        u.phone
+                    FROM proposal_requests pr
+                    JOIN land_report lr ON pr.report_id = lr.report_id
+                    JOIN land l ON pr.land_id = l.land_id
+                    JOIN user u ON pr.user_id = u.user_id";
+            
+            $params = [];
+            if ($status) {
+                $sql .= " WHERE pr.status = :status";
+                $params[':status'] = $status;
+            }
+            
+            $sql .= " ORDER BY pr.created_at DESC";
+            
+            $requests = $this->executeQuery($sql, $params);
+            
+            // Parse JSON crop recommendations
+            foreach ($requests as &$request) {
+                $request['crop_recommendations'] = json_decode($request['crop_recommendations'] ?? '[]', true);
+            }
+            
+            return [
+                'success' => true,
+                'data' => $requests
+            ];
+            
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Error fetching proposal requests: ' . $e->getMessage()
+            ];
+        }
     }
 }
 

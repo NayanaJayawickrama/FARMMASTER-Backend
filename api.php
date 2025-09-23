@@ -590,6 +590,9 @@ class APIRouter {
                     } else if ($segments[1] === 'proposal-requests') {
                         // Get proposal requests for financial manager: land-reports/proposal-requests
                         $controller->getProposalRequests();
+                    } else if ($segments[1] === 'proposal-requests-public') {
+                        // Public proposal requests: land-reports/proposal-requests-public
+                        $controller->getProposalRequestsPublic();
                     } else if ($segments[1] === 'interest-requests') {
                         // Get interest requests for financial manager: land-reports/interest-requests
                         $controller->getInterestRequests();
