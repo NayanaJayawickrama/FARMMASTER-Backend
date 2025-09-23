@@ -399,6 +399,34 @@ class LandReportController {
     }
 
     /**
+     * Get reports assigned to the current supervisor
+     */
+    public function getAssignedReports() {
+        try {
+            // TODO: Uncomment for production authentication
+            // SessionManager::requireAuth();
+            // $currentUserId = SessionManager::getCurrentUserId();
+            // $userRole = SessionManager::getCurrentUserRole();
+            
+            // Only field supervisors can access this endpoint
+            // if ($userRole !== 'Supervisor') {
+            //     Response::error("Access denied. Only field supervisors can view assigned reports.");
+            //     return;
+            // }
+
+            // For testing - use a default supervisor ID (replace with session user ID in production)
+            $currentUserId = 31; // Kanchana Almeda - Field Supervisor from database
+
+            $reports = $this->landReportModel->getAssignedReportsForSupervisor($currentUserId);
+            
+            Response::success("Assigned land reports retrieved successfully", $reports);
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
      * Get land reports for review and approval
      * Returns completed reports waiting for operational manager review
      */

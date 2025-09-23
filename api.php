@@ -569,7 +569,10 @@ class APIRouter {
         switch ($method) {
             case 'GET':
                 if (isset($segments[1])) {
-                    if ($segments[1] === 'assignments') {
+                    if ($segments[1] === 'assigned') {
+                        // GET /api/land-reports/assigned - For supervisors to see their assigned reports
+                        $controller->getAssignedReports();
+                    } else if ($segments[1] === 'assignments') {
                         // GET /api/land-reports/assignments - NEW ROUTE
                         $controller->getAssignmentReports();
                     } else if ($segments[1] === 'reviews') {
