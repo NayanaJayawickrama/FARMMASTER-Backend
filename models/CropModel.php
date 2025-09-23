@@ -24,7 +24,7 @@ class CropModel extends BaseModel {
             $params[':status'] = $filters['status'];
         }
 
-        $sql = "SELECT crop_id, crop_name, crop_duration, quantity, status FROM {$this->table}";
+        $sql = "SELECT crop_id, crop_name, quantity, status FROM {$this->table}";
         
         if (!empty($conditions)) {
             $sql .= " WHERE " . implode(' AND ', $conditions);
@@ -51,7 +51,6 @@ class CropModel extends BaseModel {
         try {
             $data = [
                 'crop_name' => $cropData['crop_name'],
-                'crop_duration' => $cropData['crop_duration'],
                 'quantity' => $cropData['quantity'],
                 'status' => $cropData['status'] ?? 'Available'
             ];
