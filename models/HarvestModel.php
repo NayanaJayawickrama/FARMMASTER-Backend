@@ -28,11 +28,11 @@ class HarvestModel extends BaseModel {
                     h.farmmaster_share,
                     h.notes,
                     h.created_at,
-                    l.location,
-                    l.size,
+                    COALESCE(l.location, 'Land Deleted') as location,
+                    COALESCE(l.size, 0) as size,
                     p.status as proposal_status
                 FROM harvest h
-                JOIN land l ON h.land_id = l.land_id
+                LEFT JOIN land l ON h.land_id = l.land_id
                 LEFT JOIN proposals p ON h.proposal_id = p.proposal_id
                 WHERE h.user_id = ?";
         
@@ -128,14 +128,14 @@ class HarvestModel extends BaseModel {
                     h.farmmaster_share,
                     h.notes,
                     h.created_at,
-                    l.location,
-                    l.size,
+                    COALESCE(l.location, 'Land Deleted') as location,
+                    COALESCE(l.size, 0) as size,
                     p.status as proposal_status,
                     u.firstname,
                     u.lastname,
                     u.email
                 FROM harvest h
-                JOIN land l ON h.land_id = l.land_id
+                LEFT JOIN land l ON h.land_id = l.land_id
                 LEFT JOIN proposals p ON h.proposal_id = p.proposal_id
                 LEFT JOIN users u ON h.user_id = u.user_id
                 WHERE 1=1";
@@ -227,14 +227,14 @@ class HarvestModel extends BaseModel {
         try {
             $sql = "SELECT 
                         h.*,
-                        l.location,
-                        l.size,
+                        COALESCE(l.location, 'Land Deleted') as location,
+                        COALESCE(l.size, 0) as size,
                         p.status as proposal_status,
                         u.firstname,
                         u.lastname,
                         u.email
                     FROM harvest h
-                    JOIN land l ON h.land_id = l.land_id
+                    LEFT JOIN land l ON h.land_id = l.land_id
                     LEFT JOIN proposals p ON h.proposal_id = p.proposal_id
                     LEFT JOIN users u ON h.user_id = u.user_id
                     WHERE h.harvest_id = ?";
@@ -516,17 +516,17 @@ class HarvestModel extends BaseModel {
                     h.harvest_amount,
                     h.income,
                     h.net_profit,
-                    l.location,
-                    l.size,
+                    COALESCE(l.location, 'Land Deleted') as location,
+                    COALESCE(l.size, 0) as size,
                     u.firstname,
                     u.lastname,
                     u.email
                 FROM harvest h
-                JOIN land l ON h.land_id = l.land_id
+                LEFT JOIN land l ON h.land_id = l.land_id
                 LEFT JOIN users u ON h.user_id = u.user_id
                 WHERE (
                     h.product_type LIKE ? OR 
-                    l.location LIKE ? OR
+                    COALESCE(l.location, '') LIKE ? OR
                     h.notes LIKE ? OR
                     u.firstname LIKE ? OR
                     u.lastname LIKE ? OR

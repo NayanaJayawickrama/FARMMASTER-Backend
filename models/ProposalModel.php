@@ -27,10 +27,10 @@ class ProposalModel extends BaseModel {
                     p.proposal_date,
                     p.created_at,
                     p.updated_at,
-                    l.location,
-                    l.size
+                    COALESCE(l.location, 'Land Deleted') as location,
+                    COALESCE(l.size, 0) as size
                 FROM proposals p
-                JOIN land l ON p.land_id = l.land_id
+                LEFT JOIN land l ON p.land_id = l.land_id
                 WHERE p.user_id = ?";
         
         $params = [$userId];
@@ -117,13 +117,13 @@ class ProposalModel extends BaseModel {
                     p.proposal_date,
                     p.created_at,
                     p.updated_at,
-                    l.location,
-                    l.size,
+                    COALESCE(l.location, 'Land Deleted') as location,
+                    COALESCE(l.size, 0) as size,
                     CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
                     u.email,
                     CONCAT('#', YEAR(p.created_at), LPAD(p.proposal_id, 3, '0')) as proposal_display_id
                 FROM proposals p
-                JOIN land l ON p.land_id = l.land_id
+                LEFT JOIN land l ON p.land_id = l.land_id
                 JOIN user u ON p.user_id = u.user_id
                 WHERE 1=1";
         
@@ -208,13 +208,13 @@ class ProposalModel extends BaseModel {
         try {
             $sql = "SELECT 
                         p.*,
-                        l.location,
-                        l.size,
+                        COALESCE(l.location, 'Land Deleted') as location,
+                        COALESCE(l.size, 0) as size,
                         u.first_name,
                         u.last_name,
                         u.email
                     FROM proposals p
-                    JOIN land l ON p.land_id = l.land_id
+                    LEFT JOIN land l ON p.land_id = l.land_id
                     JOIN user u ON p.user_id = u.user_id
                     WHERE p.proposal_id = ?";
             
@@ -484,17 +484,17 @@ class ProposalModel extends BaseModel {
                     p.status,
                     p.proposal_date,
                     p.created_at,
-                    l.location,
-                    l.size,
+                    COALESCE(l.location, 'Land Deleted') as location,
+                    COALESCE(l.size, 0) as size,
                     u.firstname,
                     u.lastname,
                     u.email
                 FROM proposals p
-                JOIN land l ON p.land_id = l.land_id
+                LEFT JOIN land l ON p.land_id = l.land_id
                 LEFT JOIN users u ON p.user_id = u.user_id
                 WHERE (
                     p.crop_type LIKE ? OR 
-                    l.location LIKE ? OR
+                    COALESCE(l.location, '') LIKE ? OR
                     u.firstname LIKE ? OR
                     u.lastname LIKE ? OR
                     u.email LIKE ?

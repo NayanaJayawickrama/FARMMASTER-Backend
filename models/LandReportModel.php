@@ -42,14 +42,14 @@ class LandReportModel extends BaseModel {
                     lr.potassium_level,
                     lr.environmental_notes,
                     lr.status,
-                    l.location,
-                    l.size,
-                    l.payment_status,
+                    COALESCE(l.location, 'Land Deleted') as location,
+                    COALESCE(l.size, 0) as size,
+                    COALESCE(l.payment_status, 'unknown') as payment_status,
                     u.first_name,
                     u.last_name,
                     u.email
                 FROM {$this->table} lr
-                JOIN land l ON lr.land_id = l.land_id
+                LEFT JOIN land l ON lr.land_id = l.land_id
                 JOIN user u ON lr.user_id = u.user_id";
         
         if (!empty($conditions)) {
@@ -64,14 +64,14 @@ class LandReportModel extends BaseModel {
     public function getReportById($reportId) {
         $sql = "SELECT 
                     lr.*,
-                    l.location,
-                    l.size,
-                    l.payment_status,
+                    COALESCE(l.location, 'Land Deleted') as location,
+                    COALESCE(l.size, 0) as size,
+                    COALESCE(l.payment_status, 'unknown') as payment_status,
                     u.first_name,
                     u.last_name,
                     u.email
                 FROM {$this->table} lr
-                JOIN land l ON lr.land_id = l.land_id
+                LEFT JOIN land l ON lr.land_id = l.land_id
                 JOIN user u ON lr.user_id = u.user_id
                 WHERE lr.report_id = :report_id";
         $result = $this->executeQuery($sql, [':report_id' => $reportId]);
@@ -410,10 +410,10 @@ class LandReportModel extends BaseModel {
                             ELSE lr.status
                         END as current_status
                     FROM {$this->table} lr
-                    JOIN land l ON lr.land_id = l.land_id
+                    LEFT JOIN land l ON lr.land_id = l.land_id
                     JOIN user u ON lr.user_id = u.user_id
-                    WHERE l.payment_status = 'paid'
-                    ORDER BY lr.report_date DESC, l.created_at DESC";
+                    WHERE COALESCE(l.payment_status, 'unknown') = 'paid'
+                    ORDER BY lr.report_date DESC, COALESCE(l.created_at, lr.created_at) DESC";
             
             $reports = $this->executeQuery($sql);
             
@@ -482,9 +482,9 @@ class LandReportModel extends BaseModel {
                             ELSE 'Not Reviewed'
                         END as review_status
                     FROM {$this->table} lr
-                    JOIN land l ON lr.land_id = l.land_id
+                    LEFT JOIN land l ON lr.land_id = l.land_id
                     JOIN user u ON lr.user_id = u.user_id
-                    WHERE l.payment_status = 'paid'
+                    WHERE COALESCE(l.payment_status, 'unknown') = 'paid'
                     AND lr.environmental_notes LIKE '%Assigned to:%'
                     ORDER BY lr.report_date DESC";
             
@@ -862,14 +862,14 @@ class LandReportModel extends BaseModel {
                         lr.potassium_level,
                         lr.conclusion,
                         l.location,
-                        l.size,
+                        COALESCE(l.size, 0) as size,
                         u.first_name,
                         u.last_name,
                         u.email,
                         u.phone
                     FROM interest_requests ir
                     JOIN land_report lr ON ir.report_id = lr.report_id
-                    JOIN land l ON ir.land_id = l.land_id
+                    LEFT JOIN land l ON ir.land_id = l.land_id
                     JOIN user u ON ir.user_id = u.user_id
                     ORDER BY ir.created_at DESC";
             
