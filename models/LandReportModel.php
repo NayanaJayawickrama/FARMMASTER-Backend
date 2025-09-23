@@ -357,7 +357,7 @@ class LandReportModel extends BaseModel {
                         FROM land_report 
                         WHERE environmental_notes LIKE '%Assigned to:%' 
                         AND environmental_notes LIKE '%ID:%'
-                        AND (status = '' OR status IS NULL OR status NOT IN ('Approved', 'Rejected', 'Completed'))
+                        AND (completion_status IS NULL OR completion_status = 'In Progress')
                         AND SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) REGEXP '^[0-9]+$'
                     ) assigned_reports ON u.user_id = assigned_reports.supervisor_id
                     WHERE u.user_role = 'Supervisor' 

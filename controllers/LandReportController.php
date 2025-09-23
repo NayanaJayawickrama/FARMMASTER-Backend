@@ -794,7 +794,7 @@ class LandReportController {
             // }
 
             // For testing - use a default supervisor ID (replace with session user ID in production)
-            $currentUserId = 40; // njk njkhjhj - Field Supervisor from database
+            $currentUserId = 31; // Kanchana Almeda - Field Supervisor from database
 
             $reports = $this->landReportModel->getAssignedReportsForSupervisor($currentUserId);
             
@@ -858,9 +858,12 @@ class LandReportController {
             $updated = $this->landReportModel->updateReportData($reportId, $updateData);
             
             if ($updated) {
-                Response::success("Land data submitted successfully and report marked as completed", [
+                // When a supervisor completes a report, they become available for new assignments
+                // This is automatically handled by the completion status change
+                Response::success("Land data submitted successfully and report marked as completed. Supervisor is now available for new assignments.", [
                     'report_id' => $reportId,
-                    'completion_status' => 'Completed'
+                    'completion_status' => 'Completed',
+                    'supervisor_available' => true
                 ]);
             } else {
                 Response::error("Failed to submit land data");
