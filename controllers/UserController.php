@@ -7,10 +7,10 @@ require_once __DIR__ . '/../utils/SessionManager.php';
 
 class UserController {
     private $userModel;
-    private $validRoles = ['Landowner', 'Field Supervisor', 'Buyer', 'Operational_Manager', 'Financial_Manager'];
+    private $validRoles = ['Landowner', 'Supervisor', 'Buyer', 'Operational_Manager', 'Financial_Manager'];
     private $roleMapping = [
         'Landowner' => 'Landowner',
-        'Field Supervisor' => 'Field Supervisor', 
+        'Supervisor' => 'Supervisor', 
         'Buyer' => 'Buyer',
         'Operational_Manager' => 'Operational Manager',
         'Financial_Manager' => 'Financial Manager'
