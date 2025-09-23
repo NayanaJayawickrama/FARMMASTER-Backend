@@ -217,11 +217,9 @@ class UserController {
 
             $users = $this->userModel->getAllUsers($filters);
 
-            // Map roles to frontend format
-            foreach ($users as &$user) {
-                $user['user_role'] = $this->roleMapping[$user['user_role']] ?? $user['user_role'];
-            }
-
+            // Frontend will handle role display formatting
+            // No need to map roles here - keep original database values
+            
             Response::success("Users retrieved successfully", $users);
 
         } catch (Exception $e) {
