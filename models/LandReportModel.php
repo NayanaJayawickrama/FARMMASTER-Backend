@@ -143,6 +143,9 @@ class LandReportModel extends BaseModel {
             if (isset($reportData['crop_recommendation'])) {
                 $data['crop_recomendation'] = $reportData['crop_recommendation'];
             }
+            if (isset($reportData['crop_recomendation'])) {
+                $data['crop_recomendation'] = $reportData['crop_recomendation'];
+            }
             if (isset($reportData['ph_value'])) {
                 $data['ph_value'] = $reportData['ph_value'];
             }
@@ -598,6 +601,54 @@ class LandReportModel extends BaseModel {
     }
 
     /**
+     * Map database status to frontend overall_status
+     */
+    private function mapStatusToOverallStatus($status) {
+        switch (strtolower($status)) {
+            case 'sent to owner':
+                return 'Completed';
+            case 'approved':
+                return 'Approved';
+            case 'rejected':
+                return 'Rejected';
+            case 'under review':
+                return 'Under Review';
+            case 'not reviewed':
+                return 'Not Reviewed';
+            case 'pending':
+            case '':
+            case null:
+                return 'Assessment Pending';
+            default:
+                return 'Assessment Pending';
+        }
+    }
+
+    /**
+     * Map database status to frontend report_status for detailed view
+     */
+    private function mapStatusToReportStatus($status) {
+        switch (strtolower($status)) {
+            case 'sent to owner':
+                return 'Completed'; // Report is completed and available to view
+            case 'approved':
+                return 'Approved';
+            case 'rejected':
+                return 'Rejected';
+            case 'under review':
+                return 'Under Review';
+            case 'not reviewed':
+                return 'Not Reviewed';
+            case 'pending':
+            case '':
+            case null:
+                return 'Pending';
+            default:
+                return 'Pending';
+        }
+    }
+
+    /**
      * Get all reports for a specific land owner (including completed and sent reports)
      */
     public function getLandOwnerReports($userId) {
@@ -632,20 +683,47 @@ class LandReportModel extends BaseModel {
             $stmt->execute();
             $reports = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Format the data for frontend
+            // Format the data for frontend - match expected structure
             $formattedReports = [];
             foreach ($reports as $report) {
                 $formattedReports[] = [
+                    // Basic identifiers
                     'id' => '#' . date('Y') . '-LR-' . str_pad($report['report_id'], 3, '0', STR_PAD_LEFT),
                     'report_id' => $report['report_id'],
-                    'location' => $report['location'],
-                    'landowner_name' => $report['landowner_name'],
-                    'status' => $report['display_status'],
-                    'report_date' => $report['report_date'],
                     'land_id' => $report['land_id'],
                     'user_id' => $report['user_id'],
+                    
+                    // Location and basic info
+                    'location' => $report['location'],
+                    'landowner_name' => $report['landowner_name'],
+                    'size' => $report['size'],
+                    
+                    // Status information
+                    'status' => $report['display_status'],
+                    'overall_status' => $this->mapStatusToOverallStatus($report['display_status']),
+                    'report_status' => $this->mapStatusToReportStatus($report['display_status']),
+                    
+                    // Date information
+                    'report_date' => $report['report_date'],
+                    'request_date' => $report['report_date'], // Use report_date as request_date for reports
+                    
+                    // Report flags
+                    'has_report' => true, // All items from this endpoint are reports
                     'is_completed' => ($report['status'] === 'Sent to Owner'),
                     'can_view_full_report' => ($report['status'] === 'Sent to Owner'),
+                    
+                    // Flatten report details to main level for frontend compatibility
+                    'land_description' => $report['land_description'],
+                    'crop_recommendation' => $report['crop_recomendation'],
+                    'crop_recomendation' => $report['crop_recomendation'], // Maintain original field name
+                    'ph_value' => $report['ph_value'],
+                    'organic_matter' => $report['organic_matter'],
+                    'nitrogen_level' => $report['nitrogen_level'],
+                    'phosphorus_level' => $report['phosphorus_level'],
+                    'potassium_level' => $report['potassium_level'],
+                    'environmental_notes' => $report['environmental_notes'],
+                    
+                    // Keep nested structure for backward compatibility
                     'report_details' => [
                         'land_description' => $report['land_description'],
                         'crop_recommendation' => $report['crop_recomendation'],
@@ -829,10 +907,10 @@ class LandReportModel extends BaseModel {
         $phOK = ($ph >= 5.0 && $ph <= 8.5);
         $organicMatterOK = ($organicMatter >= 1.5);
         
-        // At least pH and organic matter should be good, plus at least 2 out of 3 nutrients
+        // At least pH and organic matter should be good, plus at least 1 out of 3 nutrients acceptable
         $nutrientCount = ($nitrogenOK ? 1 : 0) + ($phosphorusOK ? 1 : 0) + ($potassiumOK ? 1 : 0);
         
-        return $phOK && $organicMatterOK && $nutrientCount >= 2;
+        return $phOK && $organicMatterOK && $nutrientCount >= 1;
     }
 
     /**
@@ -877,25 +955,24 @@ class LandReportModel extends BaseModel {
                 return ["success" => false, "message" => "You can only create requests for your own land."];
             }
 
-            // Check if land is marked as suitable
-            if ($report['suitability_status'] !== 'suitable') {
-                return ["success" => false, "message" => "Only suitable land can request partnership."];
-            }
-
+            // Allow interest requests for any assessed land, regardless of suitability
+            // The financial manager will review both suitable and not-suitable land requests
+            
             // Check if request already exists
             $existingRequest = $this->getInterestRequestByReportId($reportId);
             if ($existingRequest) {
                 return ["success" => false, "message" => "Interest request already exists for this land report."];
             }
 
-            // Create the interest request
-            $sql = "INSERT INTO interest_requests (report_id, land_id, user_id, status, created_at, updated_at) 
-                    VALUES (:report_id, :land_id, :user_id, 'pending', NOW(), NOW())";
+            // Create the interest request with suitability information
+            $sql = "INSERT INTO interest_requests (report_id, land_id, user_id, status, suitability_status, created_at, updated_at) 
+                    VALUES (:report_id, :land_id, :user_id, 'pending', :suitability_status, NOW(), NOW())";
             
             $params = [
                 ':report_id' => $reportId,
                 ':land_id' => $report['land_id'],
-                ':user_id' => $userId
+                ':user_id' => $userId,
+                ':suitability_status' => $report['suitability_status'] ?? 'unknown'
             ];
 
             $this->executeQuery($sql, $params);
@@ -909,6 +986,52 @@ class LandReportModel extends BaseModel {
 
         } catch (Exception $e) {
             return ["success" => false, "message" => "Error creating interest request: " . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Decline interest request for FarmMaster partnership
+     */
+    public function declineInterestRequest($reportId, $userId) {
+        try {
+            // Check if report exists
+            $report = $this->getReportById($reportId);
+            if (!$report) {
+                return ["success" => false, "message" => "Land report not found."];
+            }
+
+            if ($report['user_id'] != $userId) {
+                return ["success" => false, "message" => "You can only decline for your own land."];
+            }
+
+            // Check if request already exists
+            $existingRequest = $this->getInterestRequestByReportId($reportId);
+            if ($existingRequest) {
+                return ["success" => false, "message" => "Interest decision already recorded for this land report."];
+            }
+
+            // Create a declined interest request
+            $sql = "INSERT INTO interest_requests (report_id, land_id, user_id, status, suitability_status, created_at, updated_at) 
+                    VALUES (:report_id, :land_id, :user_id, 'declined', :suitability_status, NOW(), NOW())";
+            
+            $params = [
+                ':report_id' => $reportId,
+                ':land_id' => $report['land_id'],
+                ':user_id' => $userId,
+                ':suitability_status' => $report['suitability_status'] ?? 'unknown'
+            ];
+
+            $this->executeQuery($sql, $params);
+            $requestId = $this->db->lastInsertId();
+
+            return [
+                "success" => true, 
+                "message" => "Decision recorded successfully. Financial Manager will be notified.", 
+                "request_id" => $requestId
+            ];
+
+        } catch (Exception $e) {
+            return ["success" => false, "message" => "Error recording decision: " . $e->getMessage()];
         }
     }
 
