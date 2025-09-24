@@ -716,6 +716,81 @@ class LandReportController {
     }
 
     /**
+     * Send completed report to land owner
+     */
+    public function sendToLandOwner($reportId) {
+        try {
+            error_log("sendToLandOwner called for report ID: " . $reportId);
+            
+            // Get the report to verify it exists and get land owner info
+            $report = $this->landReportModel->getReportById($reportId);
+            
+            if (!$report) {
+                Response::error("Report not found");
+                return;
+            }
+            
+            // Update report status to indicate it's been sent to land owner
+            $updateData = [
+                'status' => 'Sent to Owner',
+                'sent_to_owner_date' => date('Y-m-d H:i:s')
+            ];
+            
+            $result = $this->landReportModel->updateReportStatus($reportId, 'Sent to Owner');
+            
+            error_log("Update result: " . json_encode($result));
+            
+            if ($result && $result['success']) {
+                // Log the action for audit trail
+                error_log("Report {$reportId} successfully sent to land owner (User ID: {$report['user_id']})");
+                
+                // TODO: Add notification system here
+                // Example: Create notification record, send email, etc.
+                // $this->createNotification($report['user_id'], "Your land report is ready for review", $reportId);
+                
+                Response::success("Report sent to land owner successfully", [
+                    'report_id' => $reportId,
+                    'land_owner_id' => $report['user_id'],
+                    'status' => 'Sent to Owner',
+                    'message' => 'The land owner can now view their completed report in their dashboard'
+                ]);
+            } else {
+                error_log("Failed to send report {$reportId} to land owner");
+                Response::error("Failed to send report to land owner. Database error occurred.");
+            }
+            
+        } catch (Exception $e) {
+            error_log("Error in sendToLandOwner: " . $e->getMessage());
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get land owner's completed reports (including those sent to owner)
+     */
+    public function getLandOwnerReports() {
+        try {
+            // Check if user_id is provided in query params
+            $userId = $_GET['user_id'] ?? null;
+            
+            if (!$userId) {
+                Response::error("User ID is required");
+                return;
+            }
+
+            error_log("getLandOwnerReports called for user ID: " . $userId);
+            
+            $reports = $this->landReportModel->getLandOwnerReports($userId);
+            
+            Response::success("Land owner reports retrieved successfully", $reports);
+            
+        } catch (Exception $e) {
+            error_log("Error in getLandOwnerReports: " . $e->getMessage());
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
      * Generate land suitability conclusion
      */
     public function generateConclusion($reportId) {

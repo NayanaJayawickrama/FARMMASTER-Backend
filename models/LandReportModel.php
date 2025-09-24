@@ -186,12 +186,16 @@ class LandReportModel extends BaseModel {
 
     public function updateReportStatus($reportId, $status) {
         try {
-            $result = $this->update($reportId, ['status' => $status], 'report_id');
+            $sql = "UPDATE {$this->table} SET status = :status WHERE report_id = :report_id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bindParam(':status', $status, PDO::PARAM_STR);
+            $stmt->bindParam(':report_id', $reportId, PDO::PARAM_INT);
+            $result = $stmt->execute();
             
-            if ($result) {
+            if ($result && $stmt->rowCount() > 0) {
                 return ["success" => true, "message" => "Report status updated successfully."];
             } else {
-                return ["success" => false, "message" => "Report not found."];
+                return ["success" => false, "message" => "Report not found or no changes made."];
             }
         } catch (Exception $e) {
             return ["success" => false, "message" => "Database error: " . $e->getMessage()];
@@ -543,34 +547,16 @@ class LandReportModel extends BaseModel {
                         lr.nitrogen_level,
                         lr.phosphorus_level,
                         lr.potassium_level,
+                        lr.completion_status,
                         l.location,
                         l.size,
                         CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
-                        CASE 
-                            WHEN lr.environmental_notes LIKE '%Assigned to:%' THEN 
-                                SUBSTRING_INDEX(SUBSTRING_INDEX(lr.environmental_notes, 'Assigned to: ', -1), ' (ID:', 1)
-                            ELSE 'Unknown'
-                        END as supervisor_name,
-                        CASE 
-                            WHEN lr.environmental_notes LIKE '%ID: %' THEN 
-                                CONCAT('SR', LPAD(SUBSTRING_INDEX(SUBSTRING_INDEX(lr.environmental_notes, 'ID: ', -1), ')', 1), 4, '0'))
-                            ELSE 'Unknown'
-                        END as supervisor_id,
-                        CASE 
-                            WHEN lr.status = 'Approved' THEN 'Approved'
-                            WHEN lr.status = 'Rejected' THEN 'Rejected'
-                            WHEN lr.land_description IS NOT NULL AND lr.crop_recomendation IS NOT NULL THEN 'Not Reviewed'
-                            ELSE 'Not Reviewed'
-                        END as review_status
+                        'Field Supervisor' as supervisor_name,
+                        'FS001' as supervisor_id,
+                        lr.status as review_status
                     FROM {$this->table} lr
                     LEFT JOIN land l ON lr.land_id = l.land_id
                     JOIN user u ON lr.user_id = u.user_id
-                    WHERE COALESCE(l.payment_status, 'unknown') = 'paid'
-                    AND lr.environmental_notes LIKE '%Assigned to:%'
-                    AND lr.environmental_notes LIKE '%Field Assessment Notes:%'
-                    AND (lr.ph_value IS NOT NULL OR lr.organic_matter IS NOT NULL 
-                         OR lr.nitrogen_level IS NOT NULL OR lr.phosphorus_level IS NOT NULL 
-                         OR lr.potassium_level IS NOT NULL)
                     ORDER BY lr.report_date DESC";
             
             $stmt = $this->db->prepare($sql);
@@ -607,6 +593,76 @@ class LandReportModel extends BaseModel {
             
         } catch (Exception $e) {
             error_log("Error in getReviewReports: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get all reports for a specific land owner (including completed and sent reports)
+     */
+    public function getLandOwnerReports($userId) {
+        try {
+            $sql = "SELECT 
+                        lr.report_id,
+                        lr.land_id,
+                        lr.user_id,
+                        lr.report_date,
+                        lr.status,
+                        lr.environmental_notes,
+                        lr.land_description,
+                        lr.crop_recomendation,
+                        lr.ph_value,
+                        lr.organic_matter,
+                        lr.nitrogen_level,
+                        lr.phosphorus_level,
+                        lr.potassium_level,
+                        lr.completion_status,
+                        l.location,
+                        l.size,
+                        CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
+                        lr.status as display_status
+                    FROM {$this->table} lr
+                    LEFT JOIN land l ON lr.land_id = l.land_id
+                    JOIN user u ON lr.user_id = u.user_id
+                    WHERE lr.user_id = :user_id
+                    ORDER BY lr.report_date DESC";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+            $stmt->execute();
+            $reports = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Format the data for frontend
+            $formattedReports = [];
+            foreach ($reports as $report) {
+                $formattedReports[] = [
+                    'id' => '#' . date('Y') . '-LR-' . str_pad($report['report_id'], 3, '0', STR_PAD_LEFT),
+                    'report_id' => $report['report_id'],
+                    'location' => $report['location'],
+                    'landowner_name' => $report['landowner_name'],
+                    'status' => $report['display_status'],
+                    'report_date' => $report['report_date'],
+                    'land_id' => $report['land_id'],
+                    'user_id' => $report['user_id'],
+                    'is_completed' => ($report['status'] === 'Sent to Owner'),
+                    'can_view_full_report' => ($report['status'] === 'Sent to Owner'),
+                    'report_details' => [
+                        'land_description' => $report['land_description'],
+                        'crop_recommendation' => $report['crop_recomendation'],
+                        'ph_value' => $report['ph_value'],
+                        'organic_matter' => $report['organic_matter'],
+                        'nitrogen_level' => $report['nitrogen_level'],
+                        'phosphorus_level' => $report['phosphorus_level'],
+                        'potassium_level' => $report['potassium_level'],
+                        'environmental_notes' => $report['environmental_notes']
+                    ]
+                ];
+            }
+            
+            return $formattedReports;
+            
+        } catch (Exception $e) {
+            error_log("Error in getLandOwnerReports: " . $e->getMessage());
             return [];
         }
     }

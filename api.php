@@ -632,6 +632,9 @@ class APIRouter {
                     } else if ($segments[1] === 'review-reports-public') {
                         // Public review reports: land-reports/review-reports-public
                         $controller->getReviewReportsPublic();
+                    } else if ($segments[1] === 'land-owner-reports') {
+                        // Get land owner's completed reports: land-reports/land-owner-reports
+                        $controller->getLandOwnerReports();
                     } else if (isset($segments[2]) && $segments[2] === 'public') {
                         // Public endpoint for single report: land-reports/{id}/public
                         $controller->getReportPublic($segments[1]);
@@ -677,6 +680,9 @@ class APIRouter {
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'review') {
                     // PUT /api/land-reports/{id}/review - NEW ROUTE
                     $controller->submitReview($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'send-to-owner') {
+                    // PUT /api/land-reports/{id}/send-to-owner - Send report to land owner
+                    $controller->sendToLandOwner($segments[1]);
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status') {
                     $controller->updateReportStatus($segments[1]);
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'status-public') {
