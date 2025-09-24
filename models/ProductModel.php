@@ -212,6 +212,59 @@ class ProductModel extends BaseModel {
                 WHERE p.crop_id IS NULL";
         return $this->executeQuery($sql);
     }
+
+    public function getAvailableQuantity($productId) {
+        try {
+            $sql = "SELECT c.quantity as available_quantity, c.crop_name
+                    FROM {$this->table} p
+                    JOIN crop_inventory c ON p.crop_id = c.crop_id
+                    WHERE p.product_id = :product_id";
+            $params = [':product_id' => $productId];
+            $result = $this->executeQuery($sql, $params);
+            
+            if ($result && isset($result[0])) {
+                return [
+                    'success' => true,
+                    'available_quantity' => (int)$result[0]['available_quantity'],
+                    'crop_name' => $result[0]['crop_name']
+                ];
+            }
+            return ['success' => false, 'message' => 'Product not found'];
+        } catch (Exception $e) {
+            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+        }
+    }
+
+    public function validateCartQuantity($productId, $requestedQuantity) {
+        $availableData = $this->getAvailableQuantity($productId);
+        
+        if (!$availableData['success']) {
+            return $availableData;
+        }
+        
+        $availableQuantity = $availableData['available_quantity'];
+        $cropName = $availableData['crop_name'];
+        
+        // Debug logging
+        error_log("Product ID: $productId, Available: $availableQuantity, Requested: $requestedQuantity, Crop: $cropName");
+        
+        if ($requestedQuantity > $availableQuantity) {
+            return [
+                'success' => false,
+                'available_quantity' => $availableQuantity,
+                'requested_quantity' => $requestedQuantity,
+                'crop_name' => $cropName,
+                'message' => "Sorry! Only {$availableQuantity} Kg of {$cropName} is available in stock. You requested {$requestedQuantity} Kg."
+            ];
+        }
+        
+        return [
+            'success' => true,
+            'available_quantity' => $availableQuantity,
+            'crop_name' => $cropName,
+            'message' => 'Quantity is valid'
+        ];
+    }
 }
 
 ?>

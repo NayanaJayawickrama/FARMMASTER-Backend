@@ -12,14 +12,13 @@ class BuyerModel extends BaseModel {
     public function getAllRecentOrdersByUserId($userId) {
         $sql = "SELECT * FROM {$this->table} 
                 WHERE user_id = :user_id 
-                AND order_status IN ('pending','confirmed','processing','shipped') 
-                ORDER BY created_at DESC";
+                ORDER BY created_at DESC LIMIT 30";
         $params = [':user_id' => $userId];
         return $this->executeQuery($sql, $params);
     }
 
     public function getAllPurchaseHistoryByUserId($userId) {
-        $sql = "SELECT * FROM {$this->table} WHERE user_id = :user_id AND order_status = 'delivered' ORDER BY created_at DESC";
+        $sql = "SELECT * FROM {$this->table} WHERE user_id = :user_id ORDER BY created_at DESC LIMIT 30";
         $params = [':user_id' => $userId];
         return $this->executeQuery($sql, $params);
     }
@@ -31,13 +30,13 @@ class BuyerModel extends BaseModel {
     }
 
     public function getAllOrdersWithItemsByUserId($userId) {
-        $sql = "SELECT o.id, o.order_number, o.created_at as date, o.total_amount as total, o.order_status as status,
+        $sql = "SELECT o.id, o.order_number, o.created_at as date, o.total_amount as total,
                        IFNULL(GROUP_CONCAT(i.product_name SEPARATOR ', '), 'No products') as product
                 FROM cart_orders o
                 LEFT JOIN cart_order_items i ON o.id = i.cart_order_id
                 WHERE o.user_id = :user_id
                 GROUP BY o.id
-                ORDER BY o.created_at DESC";
+                ORDER BY o.created_at DESC LIMIT 30";
         $params = [':user_id' => $userId];
         // Ensure associative array return
         return $this->executeQuery($sql, $params, true);
