@@ -339,13 +339,21 @@ class UserModel extends BaseModel {
     }
 
     public function getUserAvailableRoles($userId) {
-        $sql = "SELECT DISTINCT role FROM user_roles WHERE user_id = :user_id AND is_active = 1";
-        $result = $this->executeQuery($sql, [':user_id' => $userId]);
-        
-        if ($result) {
-            return array_column($result, 'role');
+        // Get the user's primary role
+        $user = $this->getUserById($userId);
+        if (!$user) {
+            return [];
         }
-        return [];
+        
+        // Only Buyer and Landowner roles can switch to each other
+        $primaryRole = $user['user_role'];
+        if ($primaryRole === 'Buyer' || $primaryRole === 'Landowner') {
+            // Allow switching between Buyer and Landowner
+            return ['Buyer', 'Landowner'];
+        }
+        
+        // For other roles, return only their own role (no switching allowed)
+        return [$primaryRole];
     }
 
     public function switchUserRole($userId, $newRole) {
