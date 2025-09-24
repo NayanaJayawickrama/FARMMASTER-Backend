@@ -713,6 +713,37 @@ class HarvestModel extends BaseModel {
             ];
         }
     }
+
+    /**
+     * Get harvest reports by land ID
+     */
+    public function getHarvestsByLand($landId) {
+        $sql = "SELECT 
+                    h.harvest_id,
+                    h.land_id,
+                    h.user_id,
+                    h.proposal_id,
+                    h.harvest_date,
+                    h.product_type,
+                    h.harvest_amount,
+                    h.income,
+                    h.expenses,
+                    h.land_rent,
+                    h.net_profit,
+                    h.landowner_share,
+                    h.farmmaster_share,
+                    h.notes,
+                    h.created_at,
+                    h.updated_at,
+                    p.status as proposal_status
+                FROM harvest h
+                LEFT JOIN proposals p ON h.proposal_id = p.proposal_id
+                WHERE h.land_id = :land_id
+                ORDER BY h.harvest_date DESC";
+        
+        return $this->executeQuery($sql, [':land_id' => $landId]);
+    }
+
 }
 
 ?>

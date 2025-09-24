@@ -320,6 +320,64 @@ class ProductController {
         }
     }
 
+    public function validateCartQuantity() {
+        try {
+            $input = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$input) {
+                Response::error("Invalid JSON data", 400);
+                return;
+            }
+            
+            $productId = $input['product_id'] ?? null;
+            $quantity = $input['quantity'] ?? 0;
+            
+            // Debug logging
+            error_log("Validation request - Product ID: $productId, Quantity: $quantity");
+            error_log("Full input: " . json_encode($input));
+            
+            if (!$productId) {
+                Response::error("Product ID is required", 400);
+                return;
+            }
+            
+            if ($quantity <= 0) {
+                Response::error("Quantity must be greater than 0", 400);
+                return;
+            }
+            
+            $result = $this->model->validateCartQuantity($productId, $quantity);
+            
+            // Debug logging
+            error_log("Validation result: " . json_encode($result));
+            
+            if ($result['success']) {
+                Response::success($result['message'], $result);
+            } else {
+                Response::error($result['message'], 400, $result);
+            }
+            
+        } catch (Exception $e) {
+            error_log("Validation error: " . $e->getMessage());
+            Response::error($e->getMessage(), 500);
+        }
+    }
+
+    public function getAvailableQuantity($productId) {
+        try {
+            $result = $this->model->getAvailableQuantity($productId);
+            
+            if ($result['success']) {
+                Response::success("Available quantity retrieved", $result);
+            } else {
+                Response::error($result['message'], 404);
+            }
+            
+        } catch (Exception $e) {
+            Response::error($e->getMessage(), 500);
+        }
+    }
+
     private function getBaseHostUrl() {
         $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "http" : "http";
         $host = $_SERVER['HTTP_HOST'];

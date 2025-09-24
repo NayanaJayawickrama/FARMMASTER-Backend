@@ -433,6 +433,158 @@ class HarvestController {
             Response::error($e->getMessage());
         }
     }
+
+    /**
+     * Create or update harvest income report (Financial Manager only)
+     */
+    public function createHarvestIncomeReport() {
+        try {
+            SessionManager::requireRole(['Financial_Manager']);
+            
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data) {
+                Response::error("Invalid JSON data");
+            }
+
+            // Validate required fields
+            $landId = Validator::required($data['land_id'] ?? '', 'Land ID');
+            $harvestDate = Validator::date($data['harvest_date'] ?? '', 'Harvest date');
+            $productType = Validator::required($data['product_type'] ?? '', 'Product type');
+            $harvestAmount = Validator::positiveNumber($data['harvest_amount'] ?? 0, 'Harvest amount');
+            $income = Validator::positiveNumber($data['income'] ?? 0, 'Income');
+            $expenses = Validator::positiveNumber($data['expenses'] ?? 0, 'Expenses');
+            $landRent = Validator::positiveNumber($data['land_rent'] ?? 0, 'Land rent');
+
+            // Verify land exists
+            $land = $this->landModel->getLandById($landId);
+            if (!$land) {
+                Response::error("Land not found");
+            }
+
+            // Calculate financial breakdown
+            $totalIncome = $income + $landRent; // Land rent is added to income
+            $netProfit = $totalIncome - $expenses;
+            $landownerShare = $netProfit * 0.4; // 40% to landowner
+            $farmmasterShare = $netProfit * 0.6; // 60% to farmmaster
+
+            $harvestData = [
+                'land_id' => $landId,
+                'user_id' => $land['user_id'], // Landowner ID
+                'proposal_id' => $data['proposal_id'] ?? null,
+                'harvest_date' => $harvestDate,
+                'product_type' => $productType,
+                'harvest_amount' => $harvestAmount,
+                'income' => $totalIncome, // Store total income (harvest income + land rent)
+                'expenses' => $expenses,
+                'land_rent' => $landRent,
+                'net_profit' => $netProfit,
+                'landowner_share' => $landownerShare,
+                'farmmaster_share' => $farmmasterShare,
+                'notes' => $data['notes'] ?? ''
+            ];
+
+            // Check if harvest report already exists for this land and date
+            if (isset($data['harvest_id'])) {
+                // Update existing report
+                $result = $this->harvestModel->updateHarvest($data['harvest_id'], $harvestData);
+                if ($result) {
+                    Response::success("Harvest income report updated successfully", [
+                        'harvest_id' => $data['harvest_id']
+                    ]);
+                } else {
+                    Response::error("Failed to update harvest income report");
+                }
+            } else {
+                // Create new report
+                $result = $this->harvestModel->createHarvest($harvestData);
+                if ($result['success']) {
+                    Response::success("Harvest income report created successfully", [
+                        'harvest_id' => $result['harvest_id'],
+                        'landowner_share' => $landownerShare,
+                        'net_profit' => $netProfit
+                    ]);
+                } else {
+                    Response::error("Failed to create harvest income report");
+                }
+            }
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get harvest income reports for landowner
+     */
+    public function getLandownerHarvestReports($userId = null) {
+        try {
+            SessionManager::requireAuth();
+            
+            $currentUserId = SessionManager::getCurrentUserId();
+            $currentRole = SessionManager::getCurrentUserRole();
+            
+            // Landowners can only see their own reports
+            // Managers can view any landowner's reports
+            if ($currentRole === 'Landowner') {
+                $userId = $currentUserId;
+            } elseif (!in_array($currentRole, ['Financial_Manager', 'Operational_Manager'])) {
+                Response::error("Access denied");
+            }
+            
+            if (!$userId) {
+                $userId = $currentUserId;
+            }
+
+            // Get landowner's lands
+            $lands = $this->landModel->getUserLands($userId);
+            
+            // Get harvest reports for those lands
+            $harvestReports = [];
+            foreach ($lands as $land) {
+                $harvests = $this->harvestModel->getHarvestsByLand($land['land_id']);
+                if ($harvests) {
+                    foreach ($harvests as $harvest) {
+                        $harvest['land_location'] = $land['location'];
+                        $harvest['land_size'] = $land['size'];
+                        $harvestReports[] = $harvest;
+                    }
+                }
+            }
+
+            // Sort by harvest date (newest first)
+            usort($harvestReports, function($a, $b) {
+                return strtotime($b['harvest_date']) - strtotime($a['harvest_date']);
+            });
+
+            Response::success("Harvest income reports retrieved successfully", [
+                'harvest_reports' => $harvestReports,
+                'total_reports' => count($harvestReports),
+                'lands' => $lands
+            ]);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get all lands for Financial Manager to create reports
+     */
+    public function getAllLandsForReports() {
+        try {
+            SessionManager::requireRole(['Financial_Manager']);
+            
+            $lands = $this->landModel->getAllLands();
+            
+            Response::success("Lands retrieved for harvest reporting", [
+                'lands' => $lands
+            ]);
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
 }
 
 ?>

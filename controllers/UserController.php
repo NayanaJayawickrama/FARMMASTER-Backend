@@ -208,8 +208,15 @@ class UserController {
 
         if (SessionManager::isLoggedIn()) {
             SessionManager::updateLastActivity();
+            $sessionData = SessionManager::getUserSession();
+            
+            // Apply role mapping for frontend compatibility
+            if (isset($sessionData['user_role'])) {
+                $sessionData['user_role'] = $this->roleMapping[$sessionData['user_role']] ?? $sessionData['user_role'];
+            }
+            
             Response::success("Session is active", [
-                "user_data" => SessionManager::getUserSession()
+                "user_data" => $sessionData
             ]);
         }
 
