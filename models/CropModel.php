@@ -24,7 +24,7 @@ class CropModel extends BaseModel {
             $params[':status'] = $filters['status'];
         }
 
-        $sql = "SELECT crop_id, crop_name, crop_duration, quantity, status FROM {$this->table}";
+        $sql = "SELECT crop_id, crop_name, quantity, status FROM {$this->table}";
         
         if (!empty($conditions)) {
             $sql .= " WHERE " . implode(' AND ', $conditions);
@@ -51,7 +51,6 @@ class CropModel extends BaseModel {
         try {
             $data = [
                 'crop_name' => $cropData['crop_name'],
-                'crop_duration' => $cropData['crop_duration'],
                 'quantity' => $cropData['quantity'],
                 'status' => $cropData['status'] ?? 'Available'
             ];
@@ -78,9 +77,6 @@ class CropModel extends BaseModel {
             
             if (isset($cropData['crop_name'])) {
                 $data['crop_name'] = $cropData['crop_name'];
-            }
-            if (isset($cropData['crop_duration'])) {
-                $data['crop_duration'] = $cropData['crop_duration'];
             }
             if (isset($cropData['quantity'])) {
                 $data['quantity'] = $cropData['quantity'];
@@ -177,7 +173,7 @@ class CropModel extends BaseModel {
     }
 
     public function searchCrops($searchTerm) {
-        $sql = "SELECT crop_id, crop_name, crop_duration, quantity, status 
+        $sql = "SELECT crop_id, crop_name, quantity, status 
                 FROM {$this->table} 
                 WHERE crop_name LIKE :search
                 ORDER BY crop_id DESC";
@@ -191,7 +187,6 @@ class CropModel extends BaseModel {
         $sql = "SELECT 
                     COUNT(*) as total_crops,
                     SUM(quantity) as total_quantity,
-                    AVG(crop_duration) as avg_duration,
                     MIN(quantity) as min_quantity,
                     MAX(quantity) as max_quantity,
                     SUM(CASE WHEN status = 'Available' THEN 1 ELSE 0 END) as available_count,
@@ -204,7 +199,7 @@ class CropModel extends BaseModel {
     }
 
     public function getLowQuantityCrops($threshold = 10) {
-        $sql = "SELECT crop_id, crop_name, crop_duration, quantity, status 
+        $sql = "SELECT crop_id, crop_name, quantity, status 
                 FROM {$this->table} 
                 WHERE quantity <= :threshold
                 ORDER BY quantity ASC";
@@ -215,7 +210,7 @@ class CropModel extends BaseModel {
     }
 
     public function getCropsByStatus($status) {
-        $sql = "SELECT crop_id, crop_name, crop_duration, quantity, status 
+        $sql = "SELECT crop_id, crop_name, quantity, status 
                 FROM {$this->table} 
                 WHERE status = :status
                 ORDER BY crop_id DESC";
@@ -242,7 +237,6 @@ class CropModel extends BaseModel {
         $sql = "SELECT 
                     crop_name,
                     quantity,
-                    crop_duration,
                     status,
                     CASE 
                         WHEN quantity <= 5 THEN 'Critical'
