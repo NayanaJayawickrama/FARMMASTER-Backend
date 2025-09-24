@@ -668,12 +668,17 @@ class LandReportModel extends BaseModel {
                         lr.phosphorus_level,
                         lr.potassium_level,
                         lr.completion_status,
+                        lr.conclusion,
+                        lr.suitability_status,
                         l.location,
                         l.size,
                         CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
-                        lr.status as display_status
+                        lr.status as display_status,
+                        ir.status as interest_status,
+                        ir.request_id as interest_request_id
                     FROM {$this->table} lr
                     LEFT JOIN land l ON lr.land_id = l.land_id
+                    LEFT JOIN interest_requests ir ON lr.report_id = ir.report_id
                     JOIN user u ON lr.user_id = u.user_id
                     WHERE lr.user_id = :user_id
                     ORDER BY lr.report_date DESC";
@@ -712,6 +717,11 @@ class LandReportModel extends BaseModel {
                     'is_completed' => ($report['status'] === 'Sent to Owner'),
                     'can_view_full_report' => ($report['status'] === 'Sent to Owner'),
                     
+                    // Interest request information
+                    'interest_status' => $report['interest_status'],
+                    'interest_request_id' => $report['interest_request_id'],
+                    'has_interest_decision' => ($report['interest_status'] !== null),
+                    
                     // Flatten report details to main level for frontend compatibility
                     'land_description' => $report['land_description'],
                     'crop_recommendation' => $report['crop_recomendation'],
@@ -722,6 +732,8 @@ class LandReportModel extends BaseModel {
                     'phosphorus_level' => $report['phosphorus_level'],
                     'potassium_level' => $report['potassium_level'],
                     'environmental_notes' => $report['environmental_notes'],
+                    'conclusion' => $report['conclusion'] ? json_decode($report['conclusion'], true) : null,
+                    'suitability_status' => $report['suitability_status'],
                     
                     // Keep nested structure for backward compatibility
                     'report_details' => [
