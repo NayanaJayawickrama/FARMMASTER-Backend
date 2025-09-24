@@ -1,12 +1,16 @@
 <?php
 
 require_once __DIR__ . '/../models/UserModel.php';
+require_once __DIR__ . '/../models/PasswordResetModel.php';
+require_once __DIR__ . '/../services/EmailService.php';
 require_once __DIR__ . '/../utils/Response.php';
 require_once __DIR__ . '/../utils/Validator.php';
 require_once __DIR__ . '/../utils/SessionManager.php';
 
 class UserController {
     private $userModel;
+    private $passwordResetModel;
+    private $emailService;
     private $validRoles = ['Landowner', 'Supervisor', 'Buyer', 'Operational_Manager', 'Financial_Manager'];
     private $roleMapping = [
         'Landowner' => 'Landowner',
@@ -18,6 +22,8 @@ class UserController {
 
     public function __construct() {
         $this->userModel = new UserModel();
+        $this->passwordResetModel = new PasswordResetModel();
+        $this->emailService = new EmailService();
     }
 
     public function login() {
@@ -591,4 +597,121 @@ class UserController {
             Response::error($e->getMessage());
         }
     }
+
+    public function forgotPassword() {
+        try {
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data) {
+                Response::error("Invalid JSON data");
+            }
+
+            // Validate input
+            $email = Validator::email($data['email'] ?? '');
+
+            // Check if user exists
+            $user = $this->userModel->getUserByEmail($email);
+
+            if (!$user) {
+                // For security, don't reveal if email exists or not
+                Response::success("If the email exists in our system, you will receive a password reset link shortly.");
+                return;
+            }
+
+            // Check for recent reset requests to prevent spam
+            if ($this->passwordResetModel->hasRecentRequest($email, 5)) {
+                Response::error("A password reset email was already sent recently. Please wait before requesting another.");
+                return;
+            }
+
+            // Generate token
+            $token = PasswordResetModel::generateToken();
+
+            // Create reset token (expires in 1 hour)
+            if ($this->passwordResetModel->createResetToken($email, $token, 3600)) {
+                
+                // Create reset URL (you'll need to adjust this based on your frontend URL)
+                $resetUrl = $this->getFrontendUrl() . "/reset-password?token=" . $token;
+
+                // Send email
+                $this->emailService->sendPasswordResetEmail($user, $resetUrl);
+
+                Response::success("If the email exists in our system, you will receive a password reset link shortly.");
+            } else {
+                Response::error("Failed to process password reset request. Please try again.");
+            }
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function resetPassword() {
+        try {
+            // Debug logging
+            error_log("Reset Password API called");
+            
+            $data = json_decode(file_get_contents("php://input"), true);
+            error_log("Received data: " . json_encode($data));
+            
+            if (!$data) {
+                error_log("No data received");
+                Response::error("Invalid JSON data");
+            }
+
+            // Validate input
+            $token = Validator::required($data['token'] ?? '', 'Token');
+            $password = Validator::password($data['password'] ?? '');
+            
+            error_log("Token: " . $token);
+            error_log("Password length: " . strlen($password));
+
+            // Find valid token
+            $resetToken = $this->passwordResetModel->findValidToken($token);
+            error_log("Token found: " . json_encode($resetToken));
+
+            if (!$resetToken) {
+                error_log("Token not found or expired");
+                Response::error("Invalid or expired reset token");
+                return;
+            }
+
+            // Get user by email
+            $user = $this->userModel->getUserByEmail($resetToken['email']);
+            error_log("User found: " . json_encode($user));
+
+            if (!$user) {
+                error_log("User not found for email: " . $resetToken['email']);
+                Response::error("User not found");
+                return;
+            }
+
+            // Update user password (UserModel will handle hashing)
+            $updateResult = $this->userModel->updateUser($user['user_id'], ['password' => $password]);
+            error_log("Password update result: " . json_encode($updateResult));
+
+            if ($updateResult) {
+                // Delete the used token
+                $this->passwordResetModel->deleteToken($token);
+                error_log("Token deleted successfully");
+                
+                Response::success("Password has been reset successfully. You can now login with your new password.");
+            } else {
+                error_log("Password update failed");
+                Response::error("Failed to reset password. Please try again.");
+            }
+
+        } catch (Exception $e) {
+            error_log("Reset Password Exception: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            Response::error($e->getMessage());
+        }
+    }
+
+    private function getFrontendUrl() {
+        // You can make this configurable or environment-based
+        return 'http://localhost:5173'; // Default Vite dev server URL
+    }
+
+
 }
