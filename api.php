@@ -442,7 +442,17 @@ class APIRouter {
         switch ($method) {
             case 'GET':
                 if (isset($segments[1])) {
-                    $controller->getHarvest($segments[1]);
+                    // Specific harvest endpoints
+                    if ($segments[1] === 'income-reports') {
+                        // GET /api/harvest/income-reports - Get landowner harvest income reports
+                        $userId = $_GET['user_id'] ?? null;
+                        $controller->getLandownerHarvestReports($userId);
+                    } elseif ($segments[1] === 'lands-for-reports') {
+                        // GET /api/harvest/lands-for-reports - Get all lands for Financial Manager
+                        $controller->getAllLandsForReports();
+                    } else {
+                        $controller->getHarvest($segments[1]);
+                    }
                 } else {
                     // Check for user_id parameter for getUserHarvests
                     if (isset($_GET['user_id'])) {
@@ -453,7 +463,12 @@ class APIRouter {
                 }
                 break;
             case 'POST':
-                $controller->createHarvest();
+                if (isset($segments[1]) && $segments[1] === 'income-report') {
+                    // POST /api/harvest/income-report - Create harvest income report
+                    $controller->createHarvestIncomeReport();
+                } else {
+                    $controller->createHarvest();
+                }
                 break;
             case 'PUT':
                 $controller->updateHarvest();

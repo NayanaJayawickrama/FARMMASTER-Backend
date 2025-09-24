@@ -156,6 +156,35 @@ class Validator {
     public static function sanitizeString($value) {
         return htmlspecialchars(strip_tags(trim($value)), ENT_QUOTES, 'UTF-8');
     }
+
+    public static function positiveNumber($value, $fieldName) {
+        $value = trim($value);
+        
+        if (empty($value) || !is_numeric($value)) {
+            throw new Exception("{$fieldName} must be a valid number.");
+        }
+        
+        $numValue = floatval($value);
+        
+        if ($numValue < 0) {
+            throw new Exception("{$fieldName} must be a positive number.");
+        }
+        
+        return $numValue;
+    }
+
+    public static function date($value, $fieldName) {
+        if (empty(trim($value))) {
+            throw new Exception("{$fieldName} is required.");
+        }
+        
+        $date = DateTime::createFromFormat('Y-m-d', $value);
+        if (!$date || $date->format('Y-m-d') !== $value) {
+            throw new Exception("{$fieldName} must be a valid date in YYYY-MM-DD format.");
+        }
+        
+        return $value;
+    }
 }
 
 ?>
