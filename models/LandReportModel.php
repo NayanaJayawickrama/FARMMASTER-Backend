@@ -164,6 +164,9 @@ class LandReportModel extends BaseModel {
             if (isset($reportData['status'])) {
                 $data['status'] = $reportData['status'];
             }
+            if (isset($reportData['completion_status'])) {
+                $data['completion_status'] = $reportData['completion_status'];
+            }
 
             if (empty($data)) {
                 return ["success" => false, "message" => "No data to update."];
@@ -334,6 +337,55 @@ class LandReportModel extends BaseModel {
     }
 
     /**
+     * Assign supervisor to a land request (creates land_report record)
+     */
+    public function assignSupervisorToLandRequest($landId, $supervisorName, $supervisorId) {
+        try {
+            // Get land and user info for the land request
+            $landSql = "SELECT l.*, u.user_id, CONCAT(u.first_name, ' ', u.last_name) as landowner_name 
+                       FROM land l 
+                       JOIN user u ON l.user_id = u.user_id 
+                       WHERE l.land_id = :land_id";
+            
+            $stmt = $this->db->prepare($landSql);
+            $stmt->execute([':land_id' => $landId]);
+            $landInfo = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (empty($landInfo)) {
+                return false;
+            }
+            
+            $land = $landInfo[0];
+            
+            // Create land_report record with supervisor assignment
+            $supervisorInfo = "Assigned to: {$supervisorName} (ID: {$supervisorId})";
+            
+            $insertSql = "INSERT INTO {$this->table} 
+                         (land_id, user_id, report_date, land_description, crop_recomendation, environmental_notes, status) 
+                         VALUES (:land_id, :user_id, CURDATE(), :land_description, :crop_recommendation, :environmental_notes, '')";
+            
+            $params = [
+                ':land_id' => $landId,
+                ':user_id' => $land['user_id'],
+                ':land_description' => "Land assessment assigned to field supervisor for detailed analysis",
+                ':crop_recommendation' => "To be determined after field assessment by assigned supervisor",
+                ':environmental_notes' => $supervisorInfo,
+            ];
+            
+            $stmt = $this->db->prepare($insertSql);
+            $result = $stmt->execute($params);
+            
+            error_log("Land request assignment for land_id $landId: " . ($result ? 'success' : 'failed'));
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            error_log("Error assigning supervisor to land request: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Get available supervisors (Field Supervisors not currently assigned to pending reports)
      */
     public function getAvailableSupervisors() {
@@ -346,26 +398,32 @@ class LandReportModel extends BaseModel {
                         u.phone,
                         CONCAT(u.first_name, ' ', u.last_name) as full_name,
                         u.user_role as role,
+                        COALESCE(pending_count.pending_assignments, 0) as pending_assignments,
                         CASE 
-                            WHEN assigned_reports.supervisor_id IS NOT NULL THEN 'Assigned'
+                            WHEN COALESCE(pending_count.pending_assignments, 0) >= 5 THEN 'Busy'
+                            WHEN COALESCE(pending_count.pending_assignments, 0) > 0 THEN 'Available'
                             ELSE 'Available'
                         END as assignment_status
                     FROM user u
                     LEFT JOIN (
-                        SELECT DISTINCT 
-                            CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) AS UNSIGNED) as supervisor_id
+                        SELECT 
+                            CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) AS UNSIGNED) as supervisor_id,
+                            COUNT(*) as pending_assignments
                         FROM land_report 
                         WHERE environmental_notes LIKE '%Assigned to:%' 
                         AND environmental_notes LIKE '%ID:%'
                         AND (status = '' OR status IS NULL OR status NOT IN ('Approved', 'Rejected', 'Completed'))
                         AND SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) REGEXP '^[0-9]+$'
-                    ) assigned_reports ON u.user_id = assigned_reports.supervisor_id
-                    WHERE u.user_role = 'Field Supervisor' 
+                        GROUP BY CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(environmental_notes, 'ID: ', -1), ')', 1) AS UNSIGNED)
+                    ) pending_count ON u.user_id = pending_count.supervisor_id
+                    WHERE u.user_role = 'Supervisor' 
                     AND u.is_active = 1
-                    AND assigned_reports.supervisor_id IS NULL
-                    ORDER BY u.first_name, u.last_name";
+                    AND COALESCE(pending_count.pending_assignments, 0) < 5
+                    ORDER BY COALESCE(pending_count.pending_assignments, 0) ASC, u.first_name, u.last_name";
 
-            $result = $this->executeQuery($sql);
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute();
+            $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             return $result ? $result : [];
 
@@ -415,11 +473,34 @@ class LandReportModel extends BaseModel {
                     WHERE COALESCE(l.payment_status, 'unknown') = 'paid'
                     ORDER BY lr.report_date DESC, COALESCE(l.created_at, lr.created_at) DESC";
             
-            $reports = $this->executeQuery($sql);
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute();
+            $assignedReports = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Format the data for frontend
+            // Get pending land requests (not yet assigned to supervisors)
+            $pendingRequests = $this->getPendingAssignments();
+            
+            // Format the data for frontend - combine both assigned reports and pending requests
             $formattedReports = [];
-            foreach ($reports as $report) {
+            
+            // Add pending requests first (higher priority for assignment)
+            foreach ($pendingRequests as $request) {
+                $formattedReports[] = [
+                    'id' => '#' . date('Y') . '-LR-' . str_pad($request['land_id'], 3, '0', STR_PAD_LEFT),
+                    'report_id' => null, // No report_id yet since not assigned
+                    'location' => $request['location'],
+                    'name' => $request['landowner_name'],
+                    'date' => date('Y-m-d', strtotime($request['request_date'])),
+                    'supervisor' => 'Not Assigned',
+                    'status' => 'Unassigned',
+                    'current_status' => 'Assessment Pending',
+                    'land_id' => $request['land_id'],
+                    'user_id' => $request['user_id']
+                ];
+            }
+            
+            // Add assigned reports
+            foreach ($assignedReports as $report) {
                 $formattedReports[] = [
                     'id' => '#' . date('Y') . '-LR-' . str_pad($report['report_id'], 3, '0', STR_PAD_LEFT),
                     'report_id' => $report['report_id'],
@@ -486,9 +567,15 @@ class LandReportModel extends BaseModel {
                     JOIN user u ON lr.user_id = u.user_id
                     WHERE COALESCE(l.payment_status, 'unknown') = 'paid'
                     AND lr.environmental_notes LIKE '%Assigned to:%'
+                    AND lr.environmental_notes LIKE '%Field Assessment Notes:%'
+                    AND (lr.ph_value IS NOT NULL OR lr.organic_matter IS NOT NULL 
+                         OR lr.nitrogen_level IS NOT NULL OR lr.phosphorus_level IS NOT NULL 
+                         OR lr.potassium_level IS NOT NULL)
                     ORDER BY lr.report_date DESC";
             
-            $reports = $this->executeQuery($sql);
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute();
+            $reports = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Format the data for frontend
             $formattedReports = [];
@@ -529,8 +616,18 @@ class LandReportModel extends BaseModel {
      */
     public function submitReview($reportId, $decision, $feedback = '') {
         try {
+            // First, check if the report exists
+            $checkSql = "SELECT report_id FROM {$this->table} WHERE report_id = :report_id";
+            $checkStmt = $this->db->prepare($checkSql);
+            $checkStmt->execute([':report_id' => $reportId]);
+            
+            if (!$checkStmt->fetch()) {
+                error_log("Report ID {$reportId} not found for review");
+                return false;
+            }
+            
             // Map frontend decision to database status
-            $status = $decision === 'Approve' ? 'Approved' : 'Rejected';
+            $status = $decision === 'approved' ? 'Approved' : 'Rejected';
             
             // Prepare feedback to append to environmental_notes
             $reviewFeedback = "\nReview Decision: {$decision}";
@@ -550,6 +647,15 @@ class LandReportModel extends BaseModel {
                 ':feedback' => $reviewFeedback,
                 ':report_id' => $reportId
             ]);
+            
+            // Check if the update actually affected any rows
+            if ($result && $stmt->rowCount() > 0) {
+                error_log("Successfully updated report {$reportId} with decision: {$decision}");
+                return true;
+            } else {
+                error_log("Failed to update report {$reportId} - no rows affected");
+                return false;
+            }
             
             return $result;
             
@@ -930,7 +1036,9 @@ class LandReportModel extends BaseModel {
         try {
             // Get supervisor details
             $supervisorSql = "SELECT first_name, last_name FROM user WHERE user_id = :supervisor_id";
-            $supervisorResult = $this->executeQuery($supervisorSql, [':supervisor_id' => $supervisorId]);
+            $stmt = $this->db->prepare($supervisorSql);
+            $stmt->execute([':supervisor_id' => $supervisorId]);
+            $supervisorResult = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             if (!$supervisorResult) {
                 return [];
@@ -968,7 +1076,9 @@ class LandReportModel extends BaseModel {
                     
             $params = [':supervisor_assignment' => '%Assigned to: ' . $supervisorName . ' (ID: ' . $supervisorId . ')%'];
             
-            $reports = $this->executeQuery($sql, $params);
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $reports = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Process the results to extract assignment status and clean up environmental notes
             foreach ($reports as &$report) {
@@ -1065,6 +1175,39 @@ class LandReportModel extends BaseModel {
                 'success' => false,
                 'message' => 'Error fetching proposal requests: ' . $e->getMessage()
             ];
+        }
+    }
+
+    /**
+     * Get paid land requests that need supervisor assignment
+     */
+    public function getPendingAssignments() {
+        try {
+            $sql = "SELECT 
+                        l.land_id,
+                        l.user_id,
+                        l.location,
+                        l.size,
+                        l.payment_status,
+                        l.payment_date,
+                        l.created_at as request_date,
+                        CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
+                        u.email,
+                        u.phone
+                    FROM land l
+                    JOIN user u ON l.user_id = u.user_id
+                    LEFT JOIN land_report lr ON l.land_id = lr.land_id
+                    WHERE l.payment_status = 'paid' 
+                    AND lr.report_id IS NULL
+                    ORDER BY l.payment_date DESC, l.created_at DESC";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+        } catch (Exception $e) {
+            error_log("Error in getPendingAssignments: " . $e->getMessage());
+            return [];
         }
     }
 }

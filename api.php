@@ -575,6 +575,9 @@ class APIRouter {
                     } else if ($segments[1] === 'assignments') {
                         // GET /api/land-reports/assignments - NEW ROUTE
                         $controller->getAssignmentReports();
+                    } else if ($segments[1] === 'pending-assignments') {
+                        // GET /api/land-reports/pending-assignments - Get paid land requests needing supervisor assignment
+                        $controller->getPendingAssignments();
                     } else if ($segments[1] === 'reviews') {
                         // GET /api/land-reports/reviews - NEW ROUTE
                         $controller->getReviewReports();
@@ -587,6 +590,9 @@ class APIRouter {
                     } else if ($segments[1] === 'supervisors-public') {
                         // Public endpoint for supervisors: land-reports/supervisors-public
                         $controller->getAvailableSupervisorsPublic();
+                    } else if (preg_match('/^assigned-public\/(\d+)$/', $segments[1], $matches)) {
+                        // Public endpoint for assigned reports: land-reports/assigned-public/{supervisor_id}
+                        $controller->getAssignedReportsForSupervisorPublic($matches[1]);
                     } else if ($segments[1] === 'proposal-requests') {
                         // Get proposal requests for financial manager: land-reports/proposal-requests
                         $controller->getProposalRequests();
@@ -645,8 +651,14 @@ class APIRouter {
                 break;
             case 'PUT':
                 if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'assign') {
-                    // PUT /api/land-reports/{id}/assign - NEW ROUTE
+                    // PUT /api/land-reports/{id}/assign - Assign supervisor to existing land report
                     $controller->assignSupervisor($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'assign-land-request') {
+                    // PUT /api/land-reports/{land_id}/assign-land-request - Assign supervisor to land request (creates land_report)
+                    $controller->assignSupervisorToLandRequest($segments[1]);
+                } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'submit-data') {
+                    // PUT /api/land-reports/{id}/submit-data - Field supervisor submits land data
+                    $controller->submitLandData($segments[1]);
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'review') {
                     // PUT /api/land-reports/{id}/review - NEW ROUTE
                     $controller->submitReview($segments[1]);

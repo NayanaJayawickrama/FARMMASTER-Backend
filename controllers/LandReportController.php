@@ -414,8 +414,18 @@ class LandReportController {
             //     return;
             // }
 
-            // For testing - use a default supervisor ID (replace with session user ID in production)
-            $currentUserId = 31; // Kanchana Almeda - Field Supervisor from database
+            // Check for supervisor_id parameter in query string
+            $supervisorId = $_GET['supervisor_id'] ?? null;
+            
+            if ($supervisorId && is_numeric($supervisorId)) {
+                // Use provided supervisor ID
+                $currentUserId = (int)$supervisorId;
+                error_log("Using supervisor ID from parameter: " . $currentUserId);
+            } else {
+                // For testing - use a default supervisor ID (replace with session user ID in production)
+                $currentUserId = 40; // njk njkhjhj - Field Supervisor from database
+                error_log("Using default supervisor ID: " . $currentUserId);
+            }
 
             $reports = $this->landReportModel->getAssignedReportsForSupervisor($currentUserId);
             
@@ -425,6 +435,8 @@ class LandReportController {
             Response::error($e->getMessage());
         }
     }
+
+
 
     /**
      * Get land reports for review and approval
@@ -440,6 +452,43 @@ class LandReportController {
             
         } catch (Exception $e) {
             error_log("Error in getReviewReports: " . $e->getMessage());
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Get paid land requests that need supervisor assignment
+     * Returns paid assessments without assigned supervisors
+     */
+    public function getPendingAssignments() {
+        try {
+            // TODO: Uncomment for production
+            // SessionManager::requireAuth();
+            // SessionManager::requireRole(['Operational_Manager']);
+            
+            $requests = $this->landReportModel->getPendingAssignments();
+            
+            // Format the data for frontend
+            $formattedRequests = [];
+            foreach ($requests as $request) {
+                $formattedRequests[] = [
+                    'id' => '#' . date('Y') . '-LR-' . str_pad($request['land_id'], 3, '0', STR_PAD_LEFT),
+                    'report_id' => null, // No report_id yet
+                    'location' => $request['location'],
+                    'name' => $request['landowner_name'],
+                    'date' => date('Y-m-d', strtotime($request['request_date'])),
+                    'supervisor' => 'Not Assigned',
+                    'status' => 'Unassigned',
+                    'current_status' => 'Assessment Pending',
+                    'land_id' => $request['land_id'],
+                    'user_id' => $request['user_id']
+                ];
+            }
+            
+            Response::success("Pending assignments retrieved successfully", $formattedRequests);
+            
+        } catch (Exception $e) {
+            error_log("Error in getPendingAssignments: " . $e->getMessage());
             Response::error($e->getMessage());
         }
     }
@@ -496,6 +545,43 @@ class LandReportController {
     }
 
     /**
+     * Assign supervisor to land request (creates land_report record)
+     */
+    public function assignSupervisorToLandRequest($landId) {
+        try {
+            // TODO: Uncomment for production
+            // SessionManager::requireAuth();
+            // SessionManager::requireRole(['Operational_Manager']);
+            
+            error_log("assignSupervisorToLandRequest called for land ID: " . $landId);
+            
+            $input = json_decode(file_get_contents('php://input'), true);
+            error_log("Assignment input: " . print_r($input, true));
+            
+            if (!$input || !isset($input['supervisor_name']) || !isset($input['supervisor_id'])) {
+                Response::error("Supervisor name and ID are required", 400);
+                return;
+            }
+
+            $result = $this->landReportModel->assignSupervisorToLandRequest($landId, $input['supervisor_name'], $input['supervisor_id']);
+            
+            if ($result) {
+                Response::success("Supervisor assigned successfully to land request", [
+                    'land_id' => $landId,
+                    'supervisor_name' => $input['supervisor_name'],
+                    'supervisor_id' => $input['supervisor_id']
+                ]);
+            } else {
+                Response::error("Failed to assign supervisor to land request");
+            }
+            
+        } catch (Exception $e) {
+            error_log("Error in assignSupervisorToLandRequest: " . $e->getMessage());
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
      * Assign supervisor to land report
      */
     public function assignSupervisor($reportId) {
@@ -529,6 +615,64 @@ class LandReportController {
     }
 
     /**
+     * Submit land data by field supervisor
+     */
+    public function submitLandData($reportId) {
+        try {
+            // TODO: Uncomment for production
+            // SessionManager::requireAuth();
+            // SessionManager::requireRole(['Supervisor']); // Field Supervisor role
+            
+            $data = json_decode(file_get_contents("php://input"), true);
+            
+            if (!$data) {
+                Response::error("Invalid JSON data");
+                return;
+            }
+
+            // Check if report exists and is assigned to current supervisor
+            $report = $this->landReportModel->getReportById($reportId);
+            if (!$report) {
+                Response::notFound("Land report not found");
+                return;
+            }
+
+            // TODO: Uncomment for production - Verify the report is assigned to current supervisor
+            // $currentUserId = SessionManager::getCurrentUserId();
+            $assignmentNotes = $report['environmental_notes'] ?? '';
+            // if (!str_contains($assignmentNotes, "ID: $currentUserId")) {
+            //     Response::forbidden("This report is not assigned to you");
+            //     return;
+            // }
+
+            // Prepare update data
+            $updateData = [];
+            
+            if (isset($data['phValue'])) $updateData['ph_value'] = $data['phValue'];
+            if (isset($data['organicMatter'])) $updateData['organic_matter'] = $data['organicMatter'];
+            if (isset($data['nitrogen'])) $updateData['nitrogen_level'] = $data['nitrogen'];
+            if (isset($data['phosphorus'])) $updateData['phosphorus_level'] = $data['phosphorus'];
+            if (isset($data['potassium'])) $updateData['potassium_level'] = $data['potassium'];
+            if (isset($data['notes'])) $updateData['environmental_notes'] = $assignmentNotes . "\n\nField Assessment Notes: " . $data['notes'];
+            
+            // Mark as completed
+            $updateData['completion_status'] = 'Completed';
+            
+            $result = $this->landReportModel->updateReport($reportId, $updateData);
+            
+            if ($result) {
+                Response::success("Land data submitted successfully", ['report_id' => $reportId]);
+            } else {
+                Response::error("Failed to submit land data");
+            }
+            
+        } catch (Exception $e) {
+            error_log("Error in submitLandData: " . $e->getMessage());
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
      * Submit review decision for a land report
      */
     public function submitReview($reportId) {
@@ -554,13 +698,15 @@ class LandReportController {
             $result = $this->landReportModel->submitReview($reportId, $data['decision'], $feedback);
             
             if ($result) {
+                error_log("Review submission successful for report {$reportId}");
                 Response::success("Review submitted successfully", [
                     'report_id' => $reportId,
                     'decision' => $data['decision'],
                     'feedback' => $feedback
                 ]);
             } else {
-                Response::error("Failed to submit review");
+                error_log("Review submission failed for report {$reportId}");
+                Response::error("Failed to submit review. Report may not exist or database error occurred.");
             }
             
         } catch (Exception $e) {
@@ -821,6 +967,23 @@ class LandReportController {
             }
             
         } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Public version - Get reports assigned to specific supervisor (for testing)
+     */
+    public function getAssignedReportsForSupervisorPublic($supervisorId) {
+        try {
+            error_log("getAssignedReportsForSupervisorPublic called for supervisor ID: " . $supervisorId);
+            
+            $reports = $this->landReportModel->getAssignedReportsForSupervisor($supervisorId);
+            
+            Response::success("Assigned land reports retrieved successfully (public)", $reports);
+            
+        } catch (Exception $e) {
+            error_log("Error in getAssignedReportsForSupervisorPublic: " . $e->getMessage());
             Response::error($e->getMessage());
         }
     }
