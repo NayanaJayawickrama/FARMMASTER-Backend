@@ -1010,9 +1010,9 @@ class LandReportModel extends BaseModel {
                 return ["success" => false, "message" => "Interest decision already recorded for this land report."];
             }
 
-            // Create a declined interest request
+            // Create a rejected interest request
             $sql = "INSERT INTO interest_requests (report_id, land_id, user_id, status, suitability_status, created_at, updated_at) 
-                    VALUES (:report_id, :land_id, :user_id, 'declined', :suitability_status, NOW(), NOW())";
+                    VALUES (:report_id, :land_id, :user_id, 'rejected', :suitability_status, NOW(), NOW())";
             
             $params = [
                 ':report_id' => $reportId,
