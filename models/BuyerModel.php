@@ -9,24 +9,41 @@ class BuyerModel extends BaseModel {
         parent::__construct();
     }
 
+    // Get unique recent orders (no duplicates)
     public function getAllRecentOrdersByUserId($userId) {
-        $sql = "SELECT * FROM {$this->table} 
+        $sql = "SELECT DISTINCT * FROM {$this->table} 
                 WHERE user_id = :user_id 
-                ORDER BY created_at DESC LIMIT 30";
+                ORDER BY created_at DESC";
         $params = [':user_id' => $userId];
         return $this->executeQuery($sql, $params);
     }
 
+    // Remove duplicate method - use getAllRecentOrdersByUserId instead
     public function getAllPurchaseHistoryByUserId($userId) {
-        $sql = "SELECT * FROM {$this->table} WHERE user_id = :user_id ORDER BY created_at DESC LIMIT 30";
-        $params = [':user_id' => $userId];
-        return $this->executeQuery($sql, $params);
+        // This should return empty to avoid duplicates since frontend combines them
+        return [];
     }
+
     public function getRecentActivitiesByUserId($userId) {
-        //increase the limit amount for more activities, if you want all activities remove the LIMIT clause
         $sql = "SELECT * FROM {$this->table} WHERE user_id = :user_id ORDER BY created_at DESC LIMIT 5";
         $params = [':user_id' => $userId];
         return $this->executeQuery($sql, $params);
+    }
+
+    // Add method to get total order count
+    public function getTotalOrderCountByUserId($userId) {
+        $sql = "SELECT COUNT(DISTINCT id) as total_orders FROM {$this->table} WHERE user_id = :user_id";
+        $params = [':user_id' => $userId];
+        $result = $this->executeQuery($sql, $params);
+        return $result[0]['total_orders'] ?? 0;
+    }
+
+    // Add method to get total spending
+    public function getTotalSpendingByUserId($userId) {
+        $sql = "SELECT SUM(total_amount) as total_spending FROM {$this->table} WHERE user_id = :user_id";
+        $params = [':user_id' => $userId];
+        $result = $this->executeQuery($sql, $params);
+        return $result[0]['total_spending'] ?? 0;
     }
 
     public function getAllOrdersWithItemsByUserId($userId) {
@@ -38,7 +55,6 @@ class BuyerModel extends BaseModel {
                 GROUP BY o.id
                 ORDER BY o.created_at DESC LIMIT 30";
         $params = [':user_id' => $userId];
-        // Ensure associative array return
         return $this->executeQuery($sql, $params, true);
     }
 }

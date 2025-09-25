@@ -20,34 +20,43 @@ class BuyerController {
     }
 
     public function getDashboardData() {
-    try {
-        // Read JSON input instead of $_POST
-        $input = json_decode(file_get_contents("php://input"), true);
-        $userId = $input['userId'] ?? null;
+        try {
+            // Read JSON input instead of $_POST
+            $input = json_decode(file_get_contents("php://input"), true);
+            $userId = $input['userId'] ?? null;
 
-        if (!$userId) {
-            Response::error("Missing userId", 400);
-            return;
+            if (!$userId) {
+                Response::error("Missing userId", 400);
+                return;
+            }
+
+            // Get all orders (no duplicates)
+            $allOrders = $this->model->getAllRecentOrdersByUserId($userId);
+            
+            // Get recent activities (last 5)
+            $recentActivities = $this->model->getRecentActivitiesByUserId($userId);
+            
+            // Get statistics
+            $totalOrders = $this->model->getTotalOrderCountByUserId($userId);
+            $totalSpending = $this->model->getTotalSpendingByUserId($userId);
+
+            // Build response with proper structure
+            $response = [
+                'recent_orders' => $allOrders,
+                'purchase_history' => [], // Empty to avoid duplicates in frontend
+                'recent_activities' => $recentActivities,
+                'statistics' => [
+                    'total_orders' => (int)$totalOrders,
+                    'total_spending' => (float)$totalSpending
+                ]
+            ];
+
+            Response::success("Buyer dashboard data retrieved successfully", $response);
+
+        } catch (Exception $e) {
+            Response::error("Internal error: " . $e->getMessage(), 500);
         }
-
-        // Call model methods
-        $recentOrders     = $this->model->getAllRecentOrdersByUserId($userId);
-        $purchaseHistory  = $this->model->getAllPurchaseHistoryByUserId($userId);
-        $recentActivities  = $this->model->getRecentActivitiesByUserId($userId);
-
-        // Build response
-        $response = [
-            'recent_orders'     => $recentOrders,
-            'purchase_history'  => $purchaseHistory,
-            'recent_activities' => $recentActivities
-        ];
-
-        Response::success("Buyer dashboard data retrieved successfully", $response);
-
-    } catch (Exception $e) {
-        Response::error("Internal error: " . $e->getMessage(), 500);
     }
-}
 
     public function getOrders() {
         try {
