@@ -605,6 +605,8 @@ class LandReportModel extends BaseModel {
      */
     private function mapStatusToOverallStatus($status) {
         switch (strtolower($status)) {
+            case 'assessment pending':
+                return 'Assessment Pending'; // For paid land requests awaiting assessment
             case 'sent to owner':
                 return 'Completed';
             case 'approved':
@@ -629,6 +631,8 @@ class LandReportModel extends BaseModel {
      */
     private function mapStatusToReportStatus($status) {
         switch (strtolower($status)) {
+            case 'assessment pending':
+                return 'Pending Assessment'; // For paid land requests awaiting assessment
             case 'sent to owner':
                 return 'Completed'; // Report is completed and available to view
             case 'approved':
@@ -649,51 +653,100 @@ class LandReportModel extends BaseModel {
     }
 
     /**
-     * Get all reports for a specific land owner (including completed and sent reports)
+     * Get all reports for a specific land owner (including pending and completed reports)
      */
     public function getLandOwnerReports($userId) {
         try {
-            $sql = "SELECT 
-                        lr.report_id,
-                        lr.land_id,
-                        lr.user_id,
-                        lr.report_date,
-                        lr.status,
-                        lr.environmental_notes,
-                        lr.land_description,
-                        lr.crop_recomendation,
-                        lr.ph_value,
-                        lr.organic_matter,
-                        lr.nitrogen_level,
-                        lr.phosphorus_level,
-                        lr.potassium_level,
-                        lr.completion_status,
-                        lr.conclusion,
-                        lr.suitability_status,
-                        l.location,
-                        l.size,
-                        CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
-                        lr.status as display_status,
-                        ir.status as interest_status,
-                        ir.request_id as interest_request_id
-                    FROM {$this->table} lr
-                    LEFT JOIN land l ON lr.land_id = l.land_id
-                    LEFT JOIN interest_requests ir ON lr.report_id = ir.report_id
-                    JOIN user u ON lr.user_id = u.user_id
-                    WHERE lr.user_id = :user_id
-                    ORDER BY lr.report_date DESC";
+            // UNION query to get both:
+            // 1. Paid land requests that don't have reports yet (pending)
+            // 2. Existing land reports (completed)
+            $sql = "
+                -- Paid land requests without reports (PENDING)
+                SELECT 
+                    NULL as report_id,
+                    l.land_id,
+                    l.user_id,
+                    l.payment_date as report_date,
+                    'Assessment Pending' as status,
+                    NULL as environmental_notes,
+                    'Assessment request submitted and paid - waiting for field supervisor assignment' as land_description,
+                    NULL as crop_recomendation,
+                    NULL as ph_value,
+                    NULL as organic_matter,
+                    NULL as nitrogen_level,
+                    NULL as phosphorus_level,
+                    NULL as potassium_level,
+                    'In Progress' as completion_status,
+                    NULL as conclusion,
+                    'pending' as suitability_status,
+                    l.location,
+                    l.size,
+                    CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
+                    'Assessment Pending' as display_status,
+                    NULL as interest_status,
+                    NULL as interest_request_id,
+                    'pending' as record_type
+                FROM land l
+                LEFT JOIN {$this->table} lr ON l.land_id = lr.land_id
+                JOIN user u ON l.user_id = u.user_id
+                WHERE l.user_id = :user_id1 
+                    AND l.payment_status = 'paid' 
+                    AND lr.report_id IS NULL
+
+                UNION ALL
+
+                -- Existing land reports (COMPLETED/IN PROGRESS)
+                SELECT 
+                    lr.report_id,
+                    lr.land_id,
+                    lr.user_id,
+                    lr.report_date,
+                    lr.status,
+                    lr.environmental_notes,
+                    lr.land_description,
+                    lr.crop_recomendation,
+                    lr.ph_value,
+                    lr.organic_matter,
+                    lr.nitrogen_level,
+                    lr.phosphorus_level,
+                    lr.potassium_level,
+                    lr.completion_status,
+                    lr.conclusion,
+                    lr.suitability_status,
+                    l.location,
+                    l.size,
+                    CONCAT(u.first_name, ' ', u.last_name) as landowner_name,
+                    lr.status as display_status,
+                    ir.status as interest_status,
+                    ir.request_id as interest_request_id,
+                    'report' as record_type
+                FROM {$this->table} lr
+                LEFT JOIN land l ON lr.land_id = l.land_id
+                LEFT JOIN interest_requests ir ON lr.report_id = ir.report_id
+                JOIN user u ON lr.user_id = u.user_id
+                WHERE lr.user_id = :user_id2
+
+                ORDER BY report_date DESC";
             
             $stmt = $this->db->prepare($sql);
-            $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+            $stmt->bindParam(':user_id1', $userId, PDO::PARAM_INT);
+            $stmt->bindParam(':user_id2', $userId, PDO::PARAM_INT);
             $stmt->execute();
             $reports = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Format the data for frontend - match expected structure
             $formattedReports = [];
             foreach ($reports as $report) {
+                $isPending = ($report['record_type'] === 'pending');
+                
+                // Generate appropriate ID
+                $id = $isPending 
+                    ? '#' . date('Y') . '-LR-PENDING-' . str_pad($report['land_id'], 3, '0', STR_PAD_LEFT)
+                    : '#' . date('Y') . '-LR-' . str_pad($report['report_id'], 3, '0', STR_PAD_LEFT);
+                
                 $formattedReports[] = [
                     // Basic identifiers
-                    'id' => '#' . date('Y') . '-LR-' . str_pad($report['report_id'], 3, '0', STR_PAD_LEFT),
+                    'id' => $id,
                     'report_id' => $report['report_id'],
                     'land_id' => $report['land_id'],
                     'user_id' => $report['user_id'],
@@ -710,14 +763,14 @@ class LandReportModel extends BaseModel {
                     
                     // Date information
                     'report_date' => $report['report_date'],
-                    'request_date' => $report['report_date'], // Use report_date as request_date for reports
+                    'request_date' => $report['report_date'], // Payment date for pending, report date for completed
                     
                     // Report flags
-                    'has_report' => true, // All items from this endpoint are reports
+                    'has_report' => !$isPending, // Pending requests don't have reports yet
                     'is_completed' => ($report['status'] === 'Sent to Owner'),
                     'can_view_full_report' => ($report['status'] === 'Sent to Owner'),
                     
-                    // Interest request information
+                    // Interest request information (only for completed reports)
                     'interest_status' => $report['interest_status'],
                     'interest_request_id' => $report['interest_request_id'],
                     'has_interest_decision' => ($report['interest_status'] !== null),
