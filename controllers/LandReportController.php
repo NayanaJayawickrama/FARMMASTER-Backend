@@ -646,28 +646,85 @@ class LandReportController {
             //     return;
             // }
 
-            // Prepare update data - Handle both old and new parameter names for compatibility
+            // Validate and prepare update data - Handle both old and new parameter names for compatibility
             $updateData = [];
+            $validationErrors = [];
             
-            // Handle pH value
-            if (isset($data['ph_value'])) $updateData['ph_value'] = $data['ph_value'];
-            else if (isset($data['phValue'])) $updateData['ph_value'] = $data['phValue'];
+            // Handle pH value (should be between 4.0 and 9.5 for agricultural land)
+            $phValue = null;
+            if (isset($data['ph_value'])) $phValue = $data['ph_value'];
+            else if (isset($data['phValue'])) $phValue = $data['phValue'];
             
-            // Handle organic matter
-            if (isset($data['organic_matter'])) $updateData['organic_matter'] = $data['organic_matter'];
-            else if (isset($data['organicMatter'])) $updateData['organic_matter'] = $data['organicMatter'];
+            if ($phValue !== null && $phValue !== '') {
+                $phValue = floatval($phValue);
+                if ($phValue < 4.0 || $phValue > 9.5) {
+                    $validationErrors[] = "pH value must be between 4.0 and 9.5";
+                } else {
+                    $updateData['ph_value'] = $phValue;
+                }
+            }
             
-            // Handle nitrogen
-            if (isset($data['nitrogen_level'])) $updateData['nitrogen_level'] = $data['nitrogen_level'];
-            else if (isset($data['nitrogen'])) $updateData['nitrogen_level'] = $data['nitrogen'];
+            // Handle organic matter (should be between 0.5% and 15%)
+            $organicMatter = null;
+            if (isset($data['organic_matter'])) $organicMatter = $data['organic_matter'];
+            else if (isset($data['organicMatter'])) $organicMatter = $data['organicMatter'];
             
-            // Handle phosphorus
-            if (isset($data['phosphorus_level'])) $updateData['phosphorus_level'] = $data['phosphorus_level'];
-            else if (isset($data['phosphorus'])) $updateData['phosphorus_level'] = $data['phosphorus'];
+            if ($organicMatter !== null && $organicMatter !== '') {
+                $organicMatter = floatval($organicMatter);
+                if ($organicMatter < 0.5 || $organicMatter > 15.0) {
+                    $validationErrors[] = "Organic matter must be between 0.5% and 15%";
+                } else {
+                    $updateData['organic_matter'] = $organicMatter;
+                }
+            }
             
-            // Handle potassium
-            if (isset($data['potassium_level'])) $updateData['potassium_level'] = $data['potassium_level'];
-            else if (isset($data['potassium'])) $updateData['potassium_level'] = $data['potassium'];
+            // Handle nitrogen (accepts "low", "medium", "high")
+            $nitrogen = null;
+            if (isset($data['nitrogen_level'])) $nitrogen = $data['nitrogen_level'];
+            else if (isset($data['nitrogen'])) $nitrogen = $data['nitrogen'];
+            
+            if ($nitrogen !== null && $nitrogen !== '') {
+                $allowedValues = ['low', 'medium', 'high'];
+                if (in_array(strtolower($nitrogen), $allowedValues)) {
+                    $updateData['nitrogen_level'] = strtolower($nitrogen);
+                } else {
+                    $validationErrors[] = "Nitrogen level must be 'low', 'medium', or 'high'";
+                }
+            }
+            
+            // Handle phosphorus (accepts "low", "medium", "high")
+            $phosphorus = null;
+            if (isset($data['phosphorus_level'])) $phosphorus = $data['phosphorus_level'];
+            else if (isset($data['phosphorus'])) $phosphorus = $data['phosphorus'];
+            
+            if ($phosphorus !== null && $phosphorus !== '') {
+                $allowedValues = ['low', 'medium', 'high'];
+                if (in_array(strtolower($phosphorus), $allowedValues)) {
+                    $updateData['phosphorus_level'] = strtolower($phosphorus);
+                } else {
+                    $validationErrors[] = "Phosphorus level must be 'low', 'medium', or 'high'";
+                }
+            }
+            
+            // Handle potassium (accepts "low", "medium", "high")
+            $potassium = null;
+            if (isset($data['potassium_level'])) $potassium = $data['potassium_level'];
+            else if (isset($data['potassium'])) $potassium = $data['potassium'];
+            
+            if ($potassium !== null && $potassium !== '') {
+                $allowedValues = ['low', 'medium', 'high'];
+                if (in_array(strtolower($potassium), $allowedValues)) {
+                    $updateData['potassium_level'] = strtolower($potassium);
+                } else {
+                    $validationErrors[] = "Potassium level must be 'low', 'medium', or 'high'";
+                }
+            }
+            
+            // Check for validation errors
+            if (!empty($validationErrors)) {
+                Response::error("Validation failed: " . implode(", ", $validationErrors));
+                return;
+            }
             
             // Handle environmental notes
             if (isset($data['environmental_notes'])) {
@@ -704,15 +761,12 @@ class LandReportController {
             
             error_log("generateCropRecommendations called for report ID: " . $reportId);
             
-            // Check what data is being sent (for debugging)
-            $rawInput = file_get_contents("php://input");
-            error_log("Raw input received: " . $rawInput);
-            
-            // Try to decode JSON but don't fail if it's empty
-            $inputData = json_decode($rawInput, true);
-            error_log("Decoded JSON: " . print_r($inputData, true));
-            
             // This endpoint doesn't require JSON input data, just the report ID
+            // Get the raw input for logging but don't fail if empty
+            $rawInput = file_get_contents("php://input");
+            error_log("Raw input received: " . ($rawInput ?: 'empty'));
+            
+            // No JSON input validation needed for this endpoint
             // Get the report with soil data directly
             $report = $this->landReportModel->getReportById($reportId);
             if (!$report) {
@@ -759,57 +813,70 @@ class LandReportController {
     private function generateCropRecommendationLogic($report) {
         $ph = floatval($report['ph_value'] ?? 0);
         $organicMatter = floatval($report['organic_matter'] ?? 0);
-        $nitrogen = strtolower($report['nitrogen_level'] ?? 'unknown');
-        $phosphorus = strtolower($report['phosphorus_level'] ?? 'unknown');
-        $potassium = strtolower($report['potassium_level'] ?? 'unknown');
+        
+        // Convert level strings to numeric values for analysis
+        $nitrogen = $this->convertLevelToNumeric($report['nitrogen_level'] ?? '');
+        $phosphorus = $this->convertLevelToNumeric($report['phosphorus_level'] ?? '');
+        $potassium = $this->convertLevelToNumeric($report['potassium_level'] ?? '');
+        
+        // Store original level strings for display
+        $nitrogenLevel = $report['nitrogen_level'] ?? '';
+        $phosphorusLevel = $report['phosphorus_level'] ?? '';
+        $potassiumLevel = $report['potassium_level'] ?? '';
         
         $recommendations = [];
         $warnings = [];
         $improvements = [];
         
-        // Sri Lankan crops with their optimal conditions
+        // Sri Lankan crops with their optimal conditions and NPK requirements
         $crops = [
             'Rice' => [
                 'ph_min' => 5.5, 'ph_max' => 7.0, 'ph_optimal' => 6.0,
-                'organic_min' => 2.0, 'nutrients' => ['medium', 'high'],
+                'organic_min' => 2.0, 'nitrogen_min' => 20, 'phosphorus_min' => 15, 'potassium_min' => 120,
                 'yield_per_acre' => '4-5 tons', 'market_price' => 'Rs. 80-100/kg',
                 'season' => 'Yala & Maha', 'water_need' => 'High'
             ],
             'Coconut' => [
                 'ph_min' => 5.2, 'ph_max' => 8.0, 'ph_optimal' => 6.5,
-                'organic_min' => 1.5, 'nutrients' => ['medium', 'high'],
+                'organic_min' => 1.5, 'nitrogen_min' => 15, 'phosphorus_min' => 10, 'potassium_min' => 200,
                 'yield_per_acre' => '2000-3000 nuts/year', 'market_price' => 'Rs. 25-35/nut',
                 'season' => 'Year-round', 'water_need' => 'Medium'
             ],
-            'Tea' => [
-                'ph_min' => 4.5, 'ph_max' => 6.0, 'ph_optimal' => 5.5,
-                'organic_min' => 3.0, 'nutrients' => ['medium', 'high'],
-                'yield_per_acre' => '1000-1500 kg/year', 'market_price' => 'Rs. 400-800/kg',
-                'season' => 'Year-round', 'water_need' => 'High'
-            ],
-            'Vegetables (Tomato)' => [
+            'Tomato' => [
                 'ph_min' => 6.0, 'ph_max' => 7.0, 'ph_optimal' => 6.5,
-                'organic_min' => 3.0, 'nutrients' => ['high'],
+                'organic_min' => 3.0, 'nitrogen_min' => 25, 'phosphorus_min' => 20, 'potassium_min' => 150,
                 'yield_per_acre' => '8-12 tons', 'market_price' => 'Rs. 80-150/kg',
                 'season' => 'Cool season', 'water_need' => 'High'
             ],
-            'Vegetables (Cabbage)' => [
+            'Cabbage' => [
                 'ph_min' => 6.0, 'ph_max' => 7.5, 'ph_optimal' => 6.5,
-                'organic_min' => 2.5, 'nutrients' => ['medium', 'high'],
+                'organic_min' => 2.5, 'nitrogen_min' => 22, 'phosphorus_min' => 18, 'potassium_min' => 180,
                 'yield_per_acre' => '15-20 tons', 'market_price' => 'Rs. 40-80/kg',
                 'season' => 'Cool season', 'water_need' => 'Medium'
             ],
+            'Lettuce' => [
+                'ph_min' => 6.0, 'ph_max' => 7.5, 'ph_optimal' => 6.8,
+                'organic_min' => 2.0, 'nitrogen_min' => 30, 'phosphorus_min' => 12, 'potassium_min' => 100,
+                'yield_per_acre' => '6-8 tons', 'market_price' => 'Rs. 100-200/kg',
+                'season' => 'Cool season', 'water_need' => 'Medium'
+            ],
+            'Carrot' => [
+                'ph_min' => 6.0, 'ph_max' => 7.0, 'ph_optimal' => 6.5,
+                'organic_min' => 2.0, 'nitrogen_min' => 18, 'phosphorus_min' => 25, 'potassium_min' => 140,
+                'yield_per_acre' => '10-15 tons', 'market_price' => 'Rs. 60-120/kg',
+                'season' => 'Cool season', 'water_need' => 'Medium'
+            ],
+            'Beans' => [
+                'ph_min' => 6.0, 'ph_max' => 7.5, 'ph_optimal' => 6.8,
+                'organic_min' => 1.5, 'nitrogen_min' => 12, 'phosphorus_min' => 22, 'potassium_min' => 110,
+                'yield_per_acre' => '3-5 tons', 'market_price' => 'Rs. 80-150/kg',
+                'season' => 'Year-round', 'water_need' => 'Medium'
+            ],
             'Banana' => [
                 'ph_min' => 5.5, 'ph_max' => 7.0, 'ph_optimal' => 6.2,
-                'organic_min' => 3.5, 'nutrients' => ['high'],
+                'organic_min' => 3.5, 'nitrogen_min' => 30, 'phosphorus_min' => 15, 'potassium_min' => 250,
                 'yield_per_acre' => '30-40 tons', 'market_price' => 'Rs. 50-100/kg',
                 'season' => 'Year-round', 'water_need' => 'High'
-            ],
-            'Spices (Pepper)' => [
-                'ph_min' => 5.5, 'ph_max' => 7.0, 'ph_optimal' => 6.0,
-                'organic_min' => 4.0, 'nutrients' => ['high'],
-                'yield_per_acre' => '500-800 kg/year', 'market_price' => 'Rs. 800-1200/kg',
-                'season' => 'Year-round', 'water_need' => 'Medium'
             ]
         ];
         
@@ -846,20 +913,45 @@ class LandReportController {
                 $reasons[] = "Low organic matter (needs compost)";
             }
             
-            // Nutrient levels (30% weight)
+            // Nutrient levels (30% weight) - using actual numeric values
             $nutrientScore = 0;
-            if (in_array($nitrogen, $cropData['nutrients'])) $nutrientScore += 10;
-            if (in_array($phosphorus, $cropData['nutrients'])) $nutrientScore += 10;
-            if (in_array($potassium, $cropData['nutrients'])) $nutrientScore += 10;
-            $score += $nutrientScore;
+            $nutrientReasons = [];
             
-            if ($nutrientScore >= 20) {
-                $reasons[] = "Good nutrient levels";
-            } else if ($nutrientScore >= 10) {
-                $reasons[] = "Moderate nutrient levels";
-            } else {
-                $reasons[] = "Low nutrient levels (needs fertilization)";
+            // Check nitrogen (if provided)
+            if ($nitrogen > 0) {
+                $nitrogenNeeded = $cropData['nitrogen_min'] ?? 20;
+                if ($nitrogen >= $nitrogenNeeded) {
+                    $nutrientScore += 10;
+                    $nutrientReasons[] = "Adequate nitrogen";
+                } else {
+                    $nutrientReasons[] = "Low nitrogen (needs {$nitrogenNeeded}+ ppm)";
+                }
             }
+            
+            // Check phosphorus (if provided)
+            if ($phosphorus > 0) {
+                $phosphorusNeeded = $cropData['phosphorus_min'] ?? 15;
+                if ($phosphorus >= $phosphorusNeeded) {
+                    $nutrientScore += 10;
+                    $nutrientReasons[] = "Adequate phosphorus";
+                } else {
+                    $nutrientReasons[] = "Low phosphorus (needs {$phosphorusNeeded}+ ppm)";
+                }
+            }
+            
+            // Check potassium (if provided)
+            if ($potassium > 0) {
+                $potassiumNeeded = $cropData['potassium_min'] ?? 100;
+                if ($potassium >= $potassiumNeeded) {
+                    $nutrientScore += 10;
+                    $nutrientReasons[] = "Adequate potassium";
+                } else {
+                    $nutrientReasons[] = "Low potassium (needs {$potassiumNeeded}+ ppm)";
+                }
+            }
+            
+            $score += $nutrientScore;
+            $reasons = array_merge($reasons, $nutrientReasons);
             
             if ($score >= 60) {
                 $recommendations[] = [
@@ -891,27 +983,27 @@ class LandReportController {
             return $b['score'] - $a['score'];
         });
         
-        // Generate soil improvement recommendations
+        // Generate soil improvement recommendations based on actual values
         if ($ph < 5.5) {
-            $improvements[] = "Apply agricultural lime (2-3 tons per hectare) to raise pH";
+            $improvements[] = "pH too low: Apply agricultural lime (2-3 tons per hectare) to raise pH to 6.0-7.0";
         } elseif ($ph > 7.5) {
-            $improvements[] = "Add organic matter and sulfur to lower pH";
+            $improvements[] = "pH too high: Add organic matter and sulfur to lower pH to 6.0-7.0";
         }
         
         if ($organicMatter < 2.0) {
-            $improvements[] = "Add compost or well-decomposed manure (5-10 tons per hectare)";
+            $improvements[] = "Low organic matter: Add compost or well-decomposed manure (5-10 tons per hectare)";
         }
         
-        if ($nitrogen === 'low') {
-            $improvements[] = "Apply nitrogen-rich fertilizer or green manure";
+        if ($nitrogenLevel === 'low') {
+            $improvements[] = "Low nitrogen level: Apply nitrogen-rich fertilizer or green manure to improve crop growth";
         }
         
-        if ($phosphorus === 'low') {
-            $improvements[] = "Apply rock phosphate or triple superphosphate";
+        if ($phosphorusLevel === 'low') {
+            $improvements[] = "Low phosphorus level: Apply rock phosphate or triple superphosphate to enhance root development";
         }
         
-        if ($potassium === 'low') {
-            $improvements[] = "Apply muriate of potash or organic potassium sources";
+        if ($potassiumLevel === 'low') {
+            $improvements[] = "Low potassium level: Apply muriate of potash or organic potassium sources to strengthen plant immunity";
         }
         
         // Generate detailed text report
@@ -924,9 +1016,9 @@ class LandReportController {
             'soil_summary' => [
                 'ph' => $ph,
                 'organic_matter' => $organicMatter,
-                'nitrogen' => $nitrogen,
-                'phosphorus' => $phosphorus,
-                'potassium' => $potassium
+                'nitrogen' => $nitrogenLevel,
+                'phosphorus' => $phosphorusLevel,
+                'potassium' => $potassiumLevel
             ]
         ];
     }
@@ -1389,6 +1481,23 @@ class LandReportController {
         } catch (Exception $e) {
             error_log("Error in getAssignedReportsForSupervisorPublic: " . $e->getMessage());
             Response::error($e->getMessage());
+        }
+    }
+
+    /**
+     * Convert level strings (low, medium, high) to numeric values for analysis
+     */
+    private function convertLevelToNumeric($level) {
+        $level = strtolower(trim($level));
+        switch($level) {
+            case 'low':
+                return 15; // Low nutrient level
+            case 'medium':
+                return 35; // Medium nutrient level  
+            case 'high':
+                return 60; // High nutrient level
+            default:
+                return 0; // No data or invalid
         }
     }
 }

@@ -926,29 +926,130 @@ class LandReportModel extends BaseModel {
     }
 
     /**
-     * Get simple crop recommendations
+     * Get comprehensive crop recommendations based on soil parameters
      */
     private function getSimpleCropRecommendations($report) {
         $crops = [];
         
         $ph = floatval($report['ph_value'] ?? 0);
         $organicMatter = floatval($report['organic_matter'] ?? 0);
-        
-        // More flexible recommendations - most soils can grow something organically
-        if ($ph >= 6.0 && $ph <= 7.5 && $organicMatter >= 2.5) {
-            // Excellent conditions
-            $crops = ['Tomatoes', 'Lettuce', 'Carrots', 'Beans', 'Cabbage', 'Spinach'];
-        } elseif ($ph >= 5.5 && $ph <= 8.0 && $organicMatter >= 1.8) {
-            // Good conditions
-            $crops = ['Potatoes', 'Onions', 'Radishes', 'Spinach', 'Beans'];
-        } elseif ($ph >= 5.0 && $ph <= 8.5) {
-            // Basic conditions - still workable
-            $crops = ['Sweet Potatoes', 'Cassava', 'Ginger', 'Turmeric'];
-        } else {
-            // Very challenging conditions
-            $crops = ['Banana', 'Papaya']; // These are more tolerant
+        $nitrogen = floatval($report['nitrogen_level'] ?? 0);
+        $phosphorus = floatval($report['phosphorus_level'] ?? 0);
+        $potassium = floatval($report['potassium_level'] ?? 0);
+
+        // Define crop database with their soil requirements
+        $cropDatabase = [
+            'Tomatoes' => [
+                'ph_min' => 6.0, 'ph_max' => 7.0, 'organic_min' => 2.5,
+                'nitrogen_min' => 20, 'phosphorus_min' => 15, 'potassium_min' => 100,
+                'description' => 'Rich organic soil, balanced nutrients'
+            ],
+            'Lettuce' => [
+                'ph_min' => 6.0, 'ph_max' => 7.5, 'organic_min' => 2.0,
+                'nitrogen_min' => 25, 'phosphorus_min' => 10, 'potassium_min' => 80,
+                'description' => 'Cool season crop, high nitrogen needs'
+            ],
+            'Carrots' => [
+                'ph_min' => 6.0, 'ph_max' => 7.0, 'organic_min' => 2.0,
+                'nitrogen_min' => 15, 'phosphorus_min' => 20, 'potassium_min' => 120,
+                'description' => 'Sandy loam preferred, moderate nutrients'
+            ],
+            'Spinach' => [
+                'ph_min' => 6.5, 'ph_max' => 7.5, 'organic_min' => 2.5,
+                'nitrogen_min' => 30, 'phosphorus_min' => 12, 'potassium_min' => 100,
+                'description' => 'High nitrogen, cool season'
+            ],
+            'Cabbage' => [
+                'ph_min' => 6.0, 'ph_max' => 7.5, 'organic_min' => 2.0,
+                'nitrogen_min' => 20, 'phosphorus_min' => 15, 'potassium_min' => 150,
+                'description' => 'Heavy feeder, needs rich soil'
+            ],
+            'Beans' => [
+                'ph_min' => 6.0, 'ph_max' => 7.5, 'organic_min' => 1.5,
+                'nitrogen_min' => 10, 'phosphorus_min' => 20, 'potassium_min' => 100,
+                'description' => 'Fixes nitrogen, needs phosphorus'
+            ],
+            'Potatoes' => [
+                'ph_min' => 5.0, 'ph_max' => 6.5, 'organic_min' => 2.0,
+                'nitrogen_min' => 15, 'phosphorus_min' => 25, 'potassium_min' => 200,
+                'description' => 'Slightly acidic soil, high potassium'
+            ],
+            'Onions' => [
+                'ph_min' => 6.0, 'ph_max' => 7.0, 'organic_min' => 1.8,
+                'nitrogen_min' => 20, 'phosphorus_min' => 15, 'potassium_min' => 120,
+                'description' => 'Well-drained soil, moderate nutrients'
+            ],
+            'Radishes' => [
+                'ph_min' => 5.8, 'ph_max' => 7.0, 'organic_min' => 1.5,
+                'nitrogen_min' => 15, 'phosphorus_min' => 10, 'potassium_min' => 80,
+                'description' => 'Fast growing, light feeder'
+            ],
+            'Sweet Potatoes' => [
+                'ph_min' => 5.5, 'ph_max' => 6.5, 'organic_min' => 1.5,
+                'nitrogen_min' => 10, 'phosphorus_min' => 15, 'potassium_min' => 150,
+                'description' => 'Tolerates poor soils, drought resistant'
+            ],
+            'Eggplant' => [
+                'ph_min' => 6.0, 'ph_max' => 7.0, 'organic_min' => 2.5,
+                'nitrogen_min' => 20, 'phosphorus_min' => 15, 'potassium_min' => 120,
+                'description' => 'Warm season crop, rich organic soil'
+            ],
+            'Peppers' => [
+                'ph_min' => 6.0, 'ph_max' => 7.0, 'organic_min' => 2.0,
+                'nitrogen_min' => 18, 'phosphorus_min' => 15, 'potassium_min' => 100,
+                'description' => 'Warm season, balanced nutrition'
+            ]
+        ];
+
+        // Check each crop against soil parameters
+        foreach ($cropDatabase as $cropName => $requirements) {
+            $suitable = true;
+            $reasons = [];
+
+            // Check pH range
+            if ($ph < $requirements['ph_min'] || $ph > $requirements['ph_max']) {
+                $suitable = false;
+                $reasons[] = "pH not optimal (needs {$requirements['ph_min']}-{$requirements['ph_max']})";
+            }
+
+            // Check organic matter
+            if ($organicMatter < $requirements['organic_min']) {
+                $suitable = false;
+                $reasons[] = "Low organic matter (needs >{$requirements['organic_min']}%)";
+            }
+
+            // Check nutrients (only if values are provided)
+            if ($nitrogen > 0 && $nitrogen < $requirements['nitrogen_min']) {
+                $suitable = false;
+                $reasons[] = "Low nitrogen (needs >{$requirements['nitrogen_min']} ppm)";
+            }
+
+            if ($phosphorus > 0 && $phosphorus < $requirements['phosphorus_min']) {
+                $suitable = false;
+                $reasons[] = "Low phosphorus (needs >{$requirements['phosphorus_min']} ppm)";
+            }
+
+            if ($potassium > 0 && $potassium < $requirements['potassium_min']) {
+                $suitable = false;
+                $reasons[] = "Low potassium (needs >{$requirements['potassium_min']} ppm)";
+            }
+
+            if ($suitable) {
+                $crops[] = $cropName . " - " . $requirements['description'];
+            }
         }
-        
+
+        // If no crops are suitable, provide improvement recommendations
+        if (empty($crops)) {
+            $crops = [
+                "Soil needs improvement before planting:",
+                "• Adjust pH to 6.0-7.0 using lime or sulfur",
+                "• Add compost to increase organic matter to 3%+",
+                "• Apply balanced fertilizer to improve NPK levels",
+                "• Consider green manure crops first (beans/peas)"
+            ];
+        }
+
         return $crops;
     }
 
