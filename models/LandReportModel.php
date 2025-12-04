@@ -189,13 +189,18 @@ class LandReportModel extends BaseModel {
 
     public function updateReportStatus($reportId, $status) {
         try {
+            error_log("updateReportStatus called for report ID: {$reportId}, status: {$status}");
+            
             $sql = "UPDATE {$this->table} SET status = :status WHERE report_id = :report_id";
             $stmt = $this->db->prepare($sql);
             $stmt->bindParam(':status', $status, PDO::PARAM_STR);
             $stmt->bindParam(':report_id', $reportId, PDO::PARAM_INT);
             $result = $stmt->execute();
             
+            error_log("Update executed. Result: " . ($result ? 'true' : 'false') . ", Rows affected: " . $stmt->rowCount());
+            
             if ($result && $stmt->rowCount() > 0) {
+                error_log("Report status updated successfully for ID: {$reportId}");
                 return ["success" => true, "message" => "Report status updated successfully."];
             } else {
                 return ["success" => false, "message" => "Report not found or no changes made."];
@@ -1130,15 +1135,14 @@ class LandReportModel extends BaseModel {
                 return ["success" => false, "message" => "Interest request already exists for this land report."];
             }
 
-            // Create the interest request with suitability information
-            $sql = "INSERT INTO interest_requests (report_id, land_id, user_id, status, suitability_status, created_at, updated_at) 
-                    VALUES (:report_id, :land_id, :user_id, 'pending', :suitability_status, NOW(), NOW())";
+            // Create the interest request
+            $sql = "INSERT INTO interest_requests (report_id, land_id, user_id, status, created_at, updated_at) 
+                    VALUES (:report_id, :land_id, :user_id, 'pending', NOW(), NOW())";
             
             $params = [
                 ':report_id' => $reportId,
                 ':land_id' => $report['land_id'],
-                ':user_id' => $userId,
-                ':suitability_status' => $report['suitability_status'] ?? 'unknown'
+                ':user_id' => $userId
             ];
 
             $this->executeQuery($sql, $params);
@@ -1177,14 +1181,13 @@ class LandReportModel extends BaseModel {
             }
 
             // Create a rejected interest request
-            $sql = "INSERT INTO interest_requests (report_id, land_id, user_id, status, suitability_status, created_at, updated_at) 
-                    VALUES (:report_id, :land_id, :user_id, 'rejected', :suitability_status, NOW(), NOW())";
+            $sql = "INSERT INTO interest_requests (report_id, land_id, user_id, status, created_at, updated_at) 
+                    VALUES (:report_id, :land_id, :user_id, 'rejected', NOW(), NOW())";
             
             $params = [
                 ':report_id' => $reportId,
                 ':land_id' => $report['land_id'],
-                ':user_id' => $userId,
-                ':suitability_status' => $report['suitability_status'] ?? 'unknown'
+                ':user_id' => $userId
             ];
 
             $this->executeQuery($sql, $params);

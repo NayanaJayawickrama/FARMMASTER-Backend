@@ -1117,25 +1117,30 @@ class LandReportController {
         try {
             error_log("sendToLandOwner called for report ID: " . $reportId);
             
+            // Validate report ID
+            if (!$reportId || !is_numeric($reportId)) {
+                error_log("Invalid report ID provided: " . var_export($reportId, true));
+                Response::error("Invalid report ID");
+                return;
+            }
+            
             // Get the report to verify it exists and get land owner info
             $report = $this->landReportModel->getReportById($reportId);
             
             if (!$report) {
+                error_log("Report not found for ID: " . $reportId);
                 Response::error("Report not found");
                 return;
             }
             
-            // Update report status to indicate it's been sent to land owner
-            $updateData = [
-                'status' => 'Sent to Owner',
-                'sent_to_owner_date' => date('Y-m-d H:i:s')
-            ];
+            error_log("Report found. Current status: " . ($report['status'] ?? 'null'));
             
+            // Update report status to indicate it's been sent to land owner
             $result = $this->landReportModel->updateReportStatus($reportId, 'Sent to Owner');
             
             error_log("Update result: " . json_encode($result));
             
-            if ($result && $result['success']) {
+            if ($result && isset($result['success']) && $result['success']) {
                 // Log the action for audit trail
                 error_log("Report {$reportId} successfully sent to land owner (User ID: {$report['user_id']})");
                 
@@ -1150,13 +1155,15 @@ class LandReportController {
                     'message' => 'The land owner can now view their completed report in their dashboard'
                 ]);
             } else {
-                error_log("Failed to send report {$reportId} to land owner");
-                Response::error("Failed to send report to land owner. Database error occurred.");
+                error_log("Failed to update report status. Result: " . json_encode($result));
+                $errorMessage = isset($result['message']) ? $result['message'] : 'Database error occurred';
+                Response::error("Failed to send report to land owner: " . $errorMessage);
             }
             
         } catch (Exception $e) {
             error_log("Error in sendToLandOwner: " . $e->getMessage());
-            Response::error($e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            Response::error("Server error: " . $e->getMessage());
         }
     }
 
