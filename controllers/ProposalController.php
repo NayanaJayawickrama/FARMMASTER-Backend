@@ -580,19 +580,20 @@ class ProposalController {
             $profitSharingLandowner = Validator::required($data['profit_sharing_landowner'] ?? '', 'Landowner profit sharing');
 
             // Get proposal request details
+            require_once __DIR__ . '/../config/Database.php';
+            $db = Database::getInstance();
+            
             $sql = "SELECT pr.*, lr.land_id, lr.user_id FROM proposal_requests pr 
                     JOIN land_report lr ON pr.report_id = lr.report_id 
                     WHERE pr.request_id = :request_id AND pr.status = 'pending_review'";
             
-            require_once __DIR__ . '/../models/LandReportModel.php';
-            $landReportModel = new LandReportModel();
-            $requestResult = $landReportModel->executeQuery($sql, [':request_id' => $requestId]);
+            $stmt = $db->prepare($sql);
+            $stmt->execute([':request_id' => $requestId]);
+            $request = $stmt->fetch(PDO::FETCH_ASSOC);
             
-            if (!$requestResult) {
+            if (!$request) {
                 Response::error("Proposal request not found or not in pending status");
             }
-            
-            $request = $requestResult[0];
             
             // Calculate estimated profit for landowner
             $estimatedProfitLandowner = ($estimatedYield * $profitSharingLandowner / 100) + $rentalValue;
@@ -623,7 +624,8 @@ class ProposalController {
                               WHERE request_id = :request_id";
                 
                 $notes = "Proposal generated successfully. Proposal ID: " . $proposalId;
-                $landReportModel->executeQuery($updateSql, [
+                $updateStmt = $db->prepare($updateSql);
+                $updateStmt->execute([
                     ':notes' => $notes,
                     ':request_id' => $requestId
                 ]);

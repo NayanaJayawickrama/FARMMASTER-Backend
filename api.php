@@ -61,6 +61,8 @@ class APIRouter {
         
         // Remove base path - handle various XAMPP configurations
         $basePaths = [
+            'FarmMaster/FARMMASTER-Backend/api.php',
+            'FarmMaster/FARMMASTER-Backend/',
             'FARMMASTER-Backend/api.php',
             'v/FARMMASTER-Backend/api.php',
             'FARMMASTER-Backend/',
@@ -350,9 +352,14 @@ class APIRouter {
         
         switch ($method) {
             case 'GET':
-                if (isset($segments[1])) {
-                    // Handle specific assessment ID - need to create this method
-                    $controller->getAssessment($segments[1]);
+                if (isset($segments[1]) && $segments[1] === 'stats') {
+                    $controller->getAssessmentStats();
+                } else if (isset($segments[1]) && $segments[1] === 'pending') {
+                    $controller->getPendingAssessments();
+                } else if (isset($segments[1]) && $segments[1] === 'completed') {
+                    $controller->getCompletedAssessments();
+                } else if (isset($segments[1]) && $segments[1] === 'dashboard') {
+                    $controller->getDashboardData();
                 } else {
                     // Check for user_id parameter for getUserAssessments
                     if (isset($_GET['user_id'])) {
@@ -363,17 +370,13 @@ class APIRouter {
                 }
                 break;
             case 'POST':
-                $controller->createAssessment();
+                Response::error('Assessment creation not supported via API', 400);
                 break;
             case 'PUT':
-                $controller->updateAssessment();
+                Response::error('Assessment update not supported via API', 400);
                 break;
             case 'DELETE':
-                if (isset($segments[1])) {
-                    $controller->deleteAssessment($segments[1]);
-                } else {
-                    Response::error('Assessment ID required', 400);
-                }
+                Response::error('Assessment deletion not supported via API', 400);
                 break;
             default:
                 Response::error('Invalid assessments endpoint', 404);
@@ -425,11 +428,7 @@ class APIRouter {
                 }
                 break;
             case 'DELETE':
-                if (isset($segments[1])) {
-                    $controller->deleteProposal($segments[1]);
-                } else {
-                    Response::error('Proposal ID required', 400);
-                }
+                Response::error('Proposal deletion not supported via API', 400);
                 break;
             default:
                 Response::error('Invalid proposals endpoint', 404);
@@ -471,7 +470,11 @@ class APIRouter {
                 }
                 break;
             case 'PUT':
-                $controller->updateHarvest();
+                if (isset($segments[1])) {
+                    $controller->updateHarvest($segments[1]);
+                } else {
+                    Response::error('Harvest ID required for update', 400);
+                }
                 break;
             case 'DELETE':
                 if (isset($segments[1])) {
@@ -690,13 +693,13 @@ class APIRouter {
                     $controller->updateReportStatusPublic($segments[1]);
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'assign-public') {
                     // Public assign supervisor: land-reports/{id}/assign-public
-                    $controller->assignSupervisorPublic($segments[1]);
+                    Response::error('Public assign supervisor endpoint not implemented', 501);
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'review-public') {
                     // Submit review public: land-reports/{id}/review-public
-                    $controller->submitReviewPublic($segments[1]);
+                    Response::error('Public review endpoint not implemented', 501);
                 } else if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'proposal-request-status') {
                     // Update proposal request status: land-reports/proposal-requests/{id}/status
-                    $controller->updateProposalRequestStatus($segments[1]);
+                    Response::error('Proposal request status endpoint not implemented', 501);
                 } else if ($segments[1] === 'interest-requests' && isset($segments[2])) {
                     // Update interest request status: land-reports/interest-requests/{id}/status
                     $controller->updateInterestRequestStatus($segments[2]);
@@ -707,11 +710,8 @@ class APIRouter {
                 }
                 break;
             case 'DELETE':
-                if (isset($segments[1]) && isset($segments[2]) && $segments[2] === 'public') {
-                    // Public delete endpoint: land-reports/{id}/public
-                    $controller->deleteAssignmentPublic($segments[1]);
-                } else if (isset($segments[1])) {
-                    $controller->deleteAssignment($segments[1]);
+                if (isset($segments[1])) {
+                    $controller->deleteReport($segments[1]);
                 } else {
                     Response::error('Report ID required', 400);
                 }
